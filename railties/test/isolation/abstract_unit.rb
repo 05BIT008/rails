@@ -9,7 +9,9 @@
 require 'fileutils'
 
 require 'bundler/setup' unless defined?(Bundler)
+require 'active_support'
 require 'active_support/testing/autorun'
+require 'active_support/testing/stream'
 require 'active_support/test_case'
 
 RAILS_FRAMEWORK_ROOT = File.expand_path("#{File.dirname(__FILE__)}/../../..")
@@ -68,7 +70,8 @@ module TestHelpers
 
     def assert_welcome(resp)
       assert_equal 200, resp[0]
-      assert resp[1]["Content-Type"] = "text/html"
+      assert_match 'text/html', resp[1]["Content-Type"]
+      assert_match 'charset=utf-8', resp[1]["Content-Type"]
       assert extract_body(resp).match(/Welcome aboard/)
     end
 
@@ -140,7 +143,9 @@ module TestHelpers
         config.eager_load = false
         config.session_store :cookie_store, key: "_myapp_session"
         config.active_support.deprecation = :log
+        config.active_support.test_order = :random
         config.action_controller.allow_forgery_protection = false
+        config.log_level = :info
       RUBY
     end
 
@@ -160,6 +165,8 @@ module TestHelpers
       app.secrets.secret_key_base = "3b7cd727ee24e8444053437c36cc66c4"
       app.config.session_store :cookie_store, key: "_myapp_session"
       app.config.active_support.deprecation = :log
+      app.config.active_support.test_order = :random
+      app.config.log_level = :info
 
       yield app if block_given?
       app.initialize!
@@ -229,6 +236,15 @@ module TestHelpers
       end
     end
 
+    def add_to_top_of_config(str)
+      environment = File.read("#{app_path}/config/application.rb")
+      if environment =~ /(Rails::Application\s*)/
+        File.open("#{app_path}/config/application.rb", 'w') do |f|
+          f.puts $` + $1 + "\n#{str}\n" + $'
+        end
+      end
+    end
+
     def add_to_config(str)
       environment = File.read("#{app_path}/config/application.rb")
       if environment =~ /(\n\s*end\s*end\s*)\Z/
@@ -261,12 +277,6 @@ module TestHelpers
       end
     end
 
-    def gsub_app_file(path, regexp, *args, &block)
-      path = "#{app_path}/#{path}"
-      content = File.read(path).gsub(regexp, *args, &block)
-      File.open(path, 'wb') { |f| f.write(content) }
-    end
-
     def remove_file(path)
       FileUtils.rm_rf "#{app_path}/#{path}"
     end
@@ -276,8 +286,12 @@ module TestHelpers
     end
 
     def use_frameworks(arr)
-      to_remove =  [:actionmailer,
-                    :activerecord] - arr
+      to_remove = [:actionmailer, :activerecord] - arr
+
+      if to_remove.include?(:activerecord)
+        remove_from_config 'config.active_record.*'
+      end
+
       $:.reject! {|path| path =~ %r'/(#{to_remove.join('|')})/' }
     end
 
@@ -291,6 +305,10 @@ class ActiveSupport::TestCase
   include TestHelpers::Paths
   include TestHelpers::Rack
   include TestHelpers::Generation
+  include ActiveSupport::Testing::Stream
+
+  self.test_order = :sorted
+
 end
 
 # Create a scope and build a fixture rails app

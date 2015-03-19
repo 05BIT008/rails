@@ -1,4 +1,3 @@
-# encoding: utf-8
 require "cases/helper"
 require 'support/ddl_helper'
 require 'support/connection_helper'
@@ -50,6 +49,12 @@ module ActiveRecord
 
       def test_primary_key_returns_nil_for_no_pk
         with_example_table 'id integer' do
+          assert_nil @connection.primary_key('ex')
+        end
+      end
+
+      def test_composite_primary_key
+        with_example_table 'id serial, number serial, PRIMARY KEY (id, number)' do
           assert_nil @connection.primary_key('ex')
         end
       end
@@ -134,10 +139,10 @@ module ActiveRecord
       end
 
       def test_default_sequence_name
-        assert_equal 'accounts_id_seq',
+        assert_equal 'public.accounts_id_seq',
           @connection.default_sequence_name('accounts', 'id')
 
-        assert_equal 'accounts_id_seq',
+        assert_equal 'public.accounts_id_seq',
           @connection.default_sequence_name('accounts')
       end
 
@@ -153,7 +158,7 @@ module ActiveRecord
         with_example_table do
           pk, seq = @connection.pk_and_sequence_for('ex')
           assert_equal 'id', pk
-          assert_equal @connection.default_sequence_name('ex', 'id'), seq
+          assert_equal @connection.default_sequence_name('ex', 'id'), seq.to_s
         end
       end
 
@@ -161,7 +166,7 @@ module ActiveRecord
         with_example_table 'code serial primary key' do
           pk, seq = @connection.pk_and_sequence_for('ex')
           assert_equal 'code', pk
-          assert_equal @connection.default_sequence_name('ex', 'code'), seq
+          assert_equal @connection.default_sequence_name('ex', 'code'), seq.to_s
         end
       end
 
@@ -216,14 +221,14 @@ module ActiveRecord
         )
 
         seq = @connection.pk_and_sequence_for('ex').last
-        assert_equal 'ex_id_seq', seq
+        assert_equal PostgreSQL::Name.new("public", "ex_id_seq"), seq
 
         @connection.exec_query(
           "DELETE FROM pg_depend WHERE objid = 'ex2_id_seq'::regclass AND refobjid = 'ex'::regclass AND deptype = 'a'"
         )
       ensure
-        @connection.exec_query('DROP TABLE IF EXISTS ex')
-        @connection.exec_query('DROP TABLE IF EXISTS ex2')
+        @connection.drop_table 'ex', if_exists: true
+        @connection.drop_table 'ex2', if_exists: true
       end
 
       def test_exec_insert_number
@@ -278,7 +283,7 @@ module ActiveRecord
           string = @connection.quote('foo')
           @connection.exec_query("INSERT INTO ex (id, data) VALUES (1, #{string})")
           result = @connection.exec_query(
-                                          'SELECT id, data FROM ex WHERE id = $1', nil, [[nil, 1]])
+                                          'SELECT id, data FROM ex WHERE id = $1', nil, [bind_param(1)])
 
           assert_equal 1, result.rows.length
           assert_equal 2, result.columns.length
@@ -292,9 +297,9 @@ module ActiveRecord
           string = @connection.quote('foo')
           @connection.exec_query("INSERT INTO ex (id, data) VALUES (1, #{string})")
 
-          column = @connection.columns('ex').find { |col| col.name == 'id' }
+          bind = ActiveRecord::Relation::QueryAttribute.new("id", "1-fuu", ActiveRecord::Type::Integer.new)
           result = @connection.exec_query(
-                                          'SELECT id, data FROM ex WHERE id = $1', nil, [[column, '1-fuu']])
+                                          'SELECT id, data FROM ex WHERE id = $1', nil, [bind])
 
           assert_equal 1, result.rows.length
           assert_equal 2, result.columns.length
@@ -304,11 +309,8 @@ module ActiveRecord
       end
 
       def test_substitute_at
-        bind = @connection.substitute_at(nil, 0)
-        assert_equal Arel.sql('$1'), bind
-
-        bind = @connection.substitute_at(nil, 1)
-        assert_equal Arel.sql('$2'), bind
+        bind = @connection.substitute_at(nil)
+        assert_equal Arel.sql('$1'), bind.to_sql
       end
 
       def test_partial_index
@@ -334,6 +336,14 @@ module ActiveRecord
           @connection.columns_for_distinct("posts.id", ["posts.created_at desc", "posts.position asc"])
       end
 
+      def test_columns_for_distinct_with_case
+        assert_equal(
+          'posts.id, CASE WHEN author.is_active THEN UPPER(author.name) ELSE UPPER(author.email) END AS alias_0',
+          @connection.columns_for_distinct('posts.id',
+            ["CASE WHEN author.is_active THEN UPPER(author.name) ELSE UPPER(author.email) END"])
+        )
+      end
+
       def test_columns_for_distinct_blank_not_nil_orders
         assert_equal "posts.id, posts.created_at AS alias_0",
           @connection.columns_for_distinct("posts.id", ["posts.created_at desc", "", "   "])
@@ -351,6 +361,17 @@ module ActiveRecord
       def test_columns_for_distinct_with_nulls
         assert_equal "posts.title, posts.updater_id AS alias_0", @connection.columns_for_distinct("posts.title", ["posts.updater_id desc nulls first"])
         assert_equal "posts.title, posts.updater_id AS alias_0", @connection.columns_for_distinct("posts.title", ["posts.updater_id desc nulls last"])
+      end
+
+      def test_columns_for_distinct_without_order_specifiers
+        assert_equal "posts.title, posts.updater_id AS alias_0",
+          @connection.columns_for_distinct("posts.title", ["posts.updater_id"])
+
+        assert_equal "posts.title, posts.updater_id AS alias_0",
+          @connection.columns_for_distinct("posts.title", ["posts.updater_id nulls last"])
+
+        assert_equal "posts.title, posts.updater_id AS alias_0",
+          @connection.columns_for_distinct("posts.title", ["posts.updater_id nulls first"])
       end
 
       def test_raise_error_when_cannot_translate_exception
@@ -396,12 +417,29 @@ module ActiveRecord
         reset_connection
       end
 
+      def test_unparsed_defaults_are_at_least_set_when_saving
+        with_example_table "id SERIAL PRIMARY KEY, number INTEGER NOT NULL DEFAULT (4 + 4) * 2 / 4" do
+          number_klass = Class.new(ActiveRecord::Base) do
+            self.table_name = 'ex'
+          end
+          column = number_klass.columns_hash["number"]
+          assert_nil column.default
+          assert_nil column.default_function
+
+          first_number = number_klass.new
+          assert_nil first_number.number
+
+          first_number.save!
+          assert_equal 4, first_number.reload.number
+        end
+      end
+
       private
       def insert(ctx, data)
-        binds   = data.map { |name, value|
-          [ctx.columns('ex').find { |x| x.name == name }, value]
+        binds = data.map { |name, value|
+          bind_param(value, name)
         }
-        columns = binds.map(&:first).map(&:name)
+        columns = binds.map(&:name)
 
         bind_subs = columns.length.times.map { |x| "$#{x + 1}" }
 
@@ -417,6 +455,10 @@ module ActiveRecord
 
       def connection_without_insert_returning
         ActiveRecord::Base.postgresql_connection(ActiveRecord::Base.configurations['arunit'].merge(:insert_returning => false))
+      end
+
+      def bind_param(value, name = nil)
+        ActiveRecord::Relation::QueryAttribute.new(name, value, ActiveRecord::Type::Value.new)
       end
     end
   end

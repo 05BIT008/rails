@@ -2,6 +2,7 @@ require "cases/helper"
 require 'models/topic'
 require 'models/reply'
 require 'models/developer'
+require 'models/computer'
 require 'models/book'
 require 'models/author'
 require 'models/post'
@@ -12,7 +13,7 @@ class TransactionTest < ActiveRecord::TestCase
   fixtures :topics, :developers, :authors, :posts
 
   def setup
-    @first, @second = Topic.find(1, 2).sort_by { |t| t.id }
+    @first, @second = Topic.find(1, 2).sort_by(&:id)
   end
 
   def test_persisted_in_a_model_with_custom_primary_key_after_failed_save
@@ -80,6 +81,30 @@ class TransactionTest < ActiveRecord::TestCase
     end
   end
 
+  def test_number_of_transactions_in_commit
+    num = nil
+
+    Topic.connection.class_eval do
+      alias :real_commit_db_transaction :commit_db_transaction
+      define_method(:commit_db_transaction) do
+        num = transaction_manager.open_transactions
+        real_commit_db_transaction
+      end
+    end
+
+    Topic.transaction do
+      @first.approved  = true
+      @first.save!
+    end
+
+    assert_equal 0, num
+  ensure
+    Topic.connection.class_eval do
+      remove_method :commit_db_transaction
+      alias :commit_db_transaction :real_commit_db_transaction rescue nil
+    end
+  end
+
   def test_successful_with_instance_method
     @first.transaction do
       @first.approved  = true
@@ -123,6 +148,19 @@ class TransactionTest < ActiveRecord::TestCase
     assert !Topic.find(1).approved?
   end
 
+  def test_rolling_back_in_a_callback_rollbacks_before_save
+    def @first.before_save_for_transaction
+      raise ActiveRecord::Rollback
+    end
+    assert !@first.approved
+
+    Topic.transaction do
+      @first.approved  = true
+      @first.save!
+    end
+    assert !Topic.find(@first.id).approved?, "Should not commit the approved flag"
+  end
+
   def test_raising_exception_in_nested_transaction_restore_state_in_save
     topic = Topic.new
 
@@ -154,6 +192,16 @@ class TransactionTest < ActiveRecord::TestCase
       author.update!(name: nil, post_ids: [])
     end
     assert_equal posts_count, author.posts(true).size
+  end
+
+  def test_cancellation_from_returning_false_in_before_filter
+    def @first.before_save_for_transaction
+      false
+    end
+
+    assert_deprecated do
+      @first.save
+    end
   end
 
   def test_cancellation_from_before_destroy_rollbacks_in_destroy
@@ -411,6 +459,26 @@ class TransactionTest < ActiveRecord::TestCase
     end
   end
 
+  def test_savepoints_name
+    Topic.transaction do
+      assert_nil Topic.connection.current_savepoint_name
+      assert_nil Topic.connection.current_transaction.savepoint_name
+
+      Topic.transaction(requires_new: true) do
+        assert_equal "active_record_1", Topic.connection.current_savepoint_name
+        assert_equal "active_record_1", Topic.connection.current_transaction.savepoint_name
+
+        Topic.transaction(requires_new: true) do
+          assert_equal "active_record_2", Topic.connection.current_savepoint_name
+          assert_equal "active_record_2", Topic.connection.current_transaction.savepoint_name
+        end
+
+        assert_equal "active_record_1", Topic.connection.current_savepoint_name
+        assert_equal "active_record_1", Topic.connection.current_transaction.savepoint_name
+      end
+    end
+  end
+
   def test_rollback_when_commit_raises
     Topic.connection.expects(:begin_db_transaction)
     Topic.connection.expects(:commit_db_transaction).raises('OH NOES')
@@ -433,6 +501,34 @@ class TransactionTest < ActiveRecord::TestCase
     assert !topic.persisted?, 'not persisted'
     assert_nil topic.id
     assert topic.frozen?, 'not frozen'
+  end
+
+  def test_rollback_when_thread_killed
+    return if in_memory_db?
+
+    queue = Queue.new
+    thread = Thread.new do
+      Topic.transaction do
+        @first.approved  = true
+        @second.approved = false
+        @first.save
+
+        queue.push nil
+        sleep
+
+        @second.save
+      end
+    end
+
+    queue.pop
+    thread.kill
+    thread.join
+
+    assert @first.approved?, "First should still be changed in the objects"
+    assert !@second.approved?, "Second should still be changed in the objects"
+
+    assert !Topic.find(1).approved?, "First shouldn't have been approved"
+    assert Topic.find(2).approved?, "Second should still be approved"
   end
 
   def test_restore_active_record_state_for_all_records_in_a_transaction
@@ -471,6 +567,39 @@ class TransactionTest < ActiveRecord::TestCase
     assert @first.persisted?, 'persisted'
     assert_not_nil @first.id
     assert !@second.destroyed?, 'not destroyed'
+  end
+
+  def test_restore_frozen_state_after_double_destroy
+    topic = Topic.create
+    reply = topic.replies.create
+
+    Topic.transaction do
+      topic.destroy # calls #destroy on reply (since dependent: destroy)
+      reply.destroy
+
+      raise ActiveRecord::Rollback
+    end
+
+    assert_not reply.frozen?
+    assert_not topic.frozen?
+  end
+
+  def test_rollback_of_frozen_records
+    topic = Topic.create.freeze
+    Topic.transaction do
+      topic.destroy
+      raise ActiveRecord::Rollback
+    end
+    assert topic.frozen?, 'frozen'
+  end
+
+  def test_rollback_for_freshly_persisted_records
+    topic = Topic.create
+    Topic.transaction do
+      topic.destroy
+      raise ActiveRecord::Rollback
+    end
+    assert topic.persisted?, 'persisted'
   end
 
   def test_sqlite_add_column_in_transaction
@@ -513,13 +642,13 @@ class TransactionTest < ActiveRecord::TestCase
 
   def test_transactions_state_from_rollback
     connection = Topic.connection
-    transaction = ActiveRecord::ConnectionAdapters::ClosedTransaction.new(connection).begin
+    transaction = ActiveRecord::ConnectionAdapters::TransactionManager.new(connection).begin_transaction
 
     assert transaction.open?
     assert !transaction.state.rolledback?
     assert !transaction.state.committed?
 
-    transaction.perform_rollback
+    transaction.rollback
 
     assert transaction.state.rolledback?
     assert !transaction.state.committed?
@@ -527,16 +656,37 @@ class TransactionTest < ActiveRecord::TestCase
 
   def test_transactions_state_from_commit
     connection = Topic.connection
-    transaction = ActiveRecord::ConnectionAdapters::ClosedTransaction.new(connection).begin
+    transaction = ActiveRecord::ConnectionAdapters::TransactionManager.new(connection).begin_transaction
 
     assert transaction.open?
     assert !transaction.state.rolledback?
     assert !transaction.state.committed?
 
-    transaction.perform_commit
+    transaction.commit
 
     assert !transaction.state.rolledback?
     assert transaction.state.committed?
+  end
+
+  def test_transaction_rollback_with_primarykeyless_tables
+    connection = ActiveRecord::Base.connection
+    connection.create_table(:transaction_without_primary_keys, force: true, id: false) do |t|
+       t.integer :thing_id
+    end
+
+    klass = Class.new(ActiveRecord::Base) do
+      self.table_name = 'transaction_without_primary_keys'
+      after_commit { } # necessary to trigger the has_transactional_callbacks branch
+    end
+
+    assert_no_difference(-> { klass.count }) do
+      ActiveRecord::Base.transaction do
+        klass.create!
+        raise ActiveRecord::Rollback
+      end
+    end
+  ensure
+    connection.drop_table 'transaction_without_primary_keys', if_exists: true
   end
 
   private
@@ -546,7 +696,7 @@ class TransactionTest < ActiveRecord::TestCase
       meta = class << topic; self; end
       meta.send("define_method", "before_#{filter}_for_transaction") do
         Book.create
-        false
+        throw(:abort)
       end
     end
   end
@@ -610,7 +760,7 @@ if current_adapter?(:PostgreSQLAdapter)
           end
         end
 
-        threads.each { |t| t.join }
+        threads.each(&:join)
       end
     end
 
@@ -658,7 +808,7 @@ if current_adapter?(:PostgreSQLAdapter)
           Developer.connection.close
         end
 
-        threads.each { |t| t.join }
+        threads.each(&:join)
       end
 
       assert_equal original_salary, Developer.find(1).salary

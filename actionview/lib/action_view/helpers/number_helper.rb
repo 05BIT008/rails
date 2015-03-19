@@ -1,4 +1,3 @@
-# encoding: utf-8
 
 require 'active_support/core_ext/hash/keys'
 require 'active_support/core_ext/string/output_safety'
@@ -117,8 +116,8 @@ module ActionView
       #   (defaults to current locale).
       # * <tt>:precision</tt> - Sets the precision of the number
       #   (defaults to 3).
-      # * <tt>:significant</tt> - If +true+, precision will be the #
-      #   of significant_digits. If +false+, the # of fractional
+      # * <tt>:significant</tt> - If +true+, precision will be the number
+      #   of significant_digits. If +false+, the number of fractional
       #   digits (defaults to +false+).
       # * <tt>:separator</tt> - Sets the separator between the
       #   fractional and integer digits (defaults to ".").
@@ -192,8 +191,8 @@ module ActionView
       #   (defaults to current locale).
       # * <tt>:precision</tt> - Sets the precision of the number
       #   (defaults to 3).
-      # * <tt>:significant</tt> - If +true+, precision will be the #
-      #   of significant_digits. If +false+, the # of fractional
+      # * <tt>:significant</tt> - If +true+, precision will be the number
+      #   of significant_digits. If +false+, the number of fractional
       #   digits (defaults to +false+).
       # * <tt>:separator</tt> - Sets the separator between the
       #   fractional and integer digits (defaults to ".").
@@ -240,8 +239,8 @@ module ActionView
       #   (defaults to current locale).
       # * <tt>:precision</tt> - Sets the precision of the number
       #   (defaults to 3).
-      # * <tt>:significant</tt> - If +true+, precision will be the #
-      #   of significant_digits. If +false+, the # of fractional
+      # * <tt>:significant</tt> - If +true+, precision will be the number
+      #   of significant_digits. If +false+, the number of fractional
       #   digits (defaults to +true+)
       # * <tt>:separator</tt> - Sets the separator between the
       #   fractional and integer digits (defaults to ".").
@@ -266,14 +265,8 @@ module ActionView
       #   number_to_human_size(1234567, precision: 2)                        # => 1.2 MB
       #   number_to_human_size(483989, precision: 2)                         # => 470 KB
       #   number_to_human_size(1234567, precision: 2, separator: ',')        # => 1,2 MB
-      #
-      # Non-significant zeros after the fractional separator are
-      # stripped out by default (set
-      # <tt>:strip_insignificant_zeros</tt> to +false+ to change
-      # that):
-      #
-      #   number_to_human_size(1234567890123, precision: 5)        # => "1.1229 TB"
-      #   number_to_human_size(524288000, precision: 5)            # => "500 MB"
+      #   number_to_human_size(1234567890123, precision: 5)                  # => "1.1228 TB"
+      #   number_to_human_size(524288000, precision: 5)                      # => "500 MB"
       def number_to_human_size(number, options = {})
         delegate_number_helper_method(:number_to_human_size, number, options)
       end
@@ -298,8 +291,8 @@ module ActionView
       #   (defaults to current locale).
       # * <tt>:precision</tt> - Sets the precision of the number
       #   (defaults to 3).
-      # * <tt>:significant</tt> - If +true+, precision will be the #
-      #   of significant_digits. If +false+, the # of fractional
+      # * <tt>:significant</tt> - If +true+, precision will be the number
+      #   of significant_digits. If +false+, the number of fractional
       #   digits (defaults to +true+)
       # * <tt>:separator</tt> - Sets the separator between the
       #   fractional and integer digits (defaults to ".").
@@ -312,12 +305,12 @@ module ActionView
       #   string containing an i18n scope where to find this hash. It
       #   might have the following keys:
       #   * *integers*: <tt>:unit</tt>, <tt>:ten</tt>,
-      #     *<tt>:hundred</tt>, <tt>:thousand</tt>, <tt>:million</tt>,
-      #     *<tt>:billion</tt>, <tt>:trillion</tt>,
-      #     *<tt>:quadrillion</tt>
+      #     <tt>:hundred</tt>, <tt>:thousand</tt>, <tt>:million</tt>,
+      #     <tt>:billion</tt>, <tt>:trillion</tt>,
+      #     <tt>:quadrillion</tt>
       #   * *fractionals*: <tt>:deci</tt>, <tt>:centi</tt>,
-      #     *<tt>:mili</tt>, <tt>:micro</tt>, <tt>:nano</tt>,
-      #     *<tt>:pico</tt>, <tt>:femto</tt>
+      #     <tt>:mili</tt>, <tt>:micro</tt>, <tt>:nano</tt>,
+      #     <tt>:pico</tt>, <tt>:femto</tt>
       # * <tt>:format</tt> - Sets the format of the output string
       #   (defaults to "%n %u"). The field types are:
       #   * %u - The quantifier (ex.: 'thousand')
@@ -343,11 +336,15 @@ module ActionView
       #                           separator: ',',
       #                           significant: false)                   # => "1,2 Million"
       #
+      #   number_to_human(500000000, precision: 5)                      # => "500 Million"
+      #   number_to_human(12345012345, significant: false)              # => "12.345 Billion"
+      #
       # Non-significant zeros after the decimal separator are stripped
       # out by default (set <tt>:strip_insignificant_zeros</tt> to
       # +false+ to change that):
-      #   number_to_human(12345012345, significant_digits: 6)       # => "12.345 Billion"
-      #   number_to_human(500000000, precision: 5)                  # => "500 Million"
+      #
+      # number_to_human(12.00001)                                       # => "12"
+      # number_to_human(12.00001, strip_insignificant_zeros: false)     # => "12.0"
       #
       # ==== Custom Unit Quantifiers
       #

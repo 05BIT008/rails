@@ -14,9 +14,9 @@ module ActiveRecord
         raise ArgumentError, "No database file specified. Missing argument: database"
       end
 
-      # Allow database path relative to Rails.root, but only if
-      # the database path is not the special path that tells
-      # Sqlite to build a database only in memory.
+      # Allow database path relative to Rails.root, but only if the database
+      # path is not the special path that tells sqlite to build a database only
+      # in memory.
       if ':memory:' != config[:database]
         config[:database] = File.expand_path(config[:database], Rails.root) if defined?(Rails.root)
         dirname = File.dirname(config[:database])
@@ -41,17 +41,6 @@ module ActiveRecord
   end
 
   module ConnectionAdapters #:nodoc:
-    class SQLite3Column < Column #:nodoc:
-      class <<  self
-        def binary_to_string(value)
-          if value.encoding != Encoding::ASCII_8BIT
-            value = value.force_encoding(Encoding::ASCII_8BIT)
-          end
-          value
-        end
-      end
-    end
-
     # The SQLite3 adapter works SQLite 3.6.16 or newer
     # with the sqlite3-ruby drivers (available as gem from https://rubygems.org/gems/sqlite3).
     #
@@ -59,6 +48,7 @@ module ActiveRecord
     #
     # * <tt>:database</tt> - Path to the database file.
     class SQLite3Adapter < AbstractAdapter
+      ADAPTER_NAME = 'SQLite'.freeze
       include Savepoints
 
       NATIVE_DATABASE_TYPES = {
@@ -69,7 +59,6 @@ module ActiveRecord
         float:        { name: "float" },
         decimal:      { name: "decimal" },
         datetime:     { name: "datetime" },
-        timestamp:    { name: "datetime" },
         time:         { name: "time" },
         date:         { name: "date" },
         binary:       { name: "blob" },
@@ -80,11 +69,11 @@ module ActiveRecord
         include Comparable
 
         def initialize(version_string)
-          @version = version_string.split('.').map { |v| v.to_i }
+          @version = version_string.split('.').map(&:to_i)
         end
 
         def <=>(version_string)
-          @version <=> version_string.split('.').map { |v| v.to_i }
+          @version <=> version_string.split('.').map(&:to_i)
         end
       end
 
@@ -107,7 +96,7 @@ module ActiveRecord
         end
 
         def clear
-          cache.values.each do |hash|
+          cache.each_value do |hash|
             dealloc hash[:stmt]
           end
           cache.clear
@@ -123,10 +112,6 @@ module ActiveRecord
         end
       end
 
-      class BindSubstitution < Arel::Visitors::SQLite # :nodoc:
-        include Arel::Visitors::BindVisitor
-      end
-
       def initialize(connection, logger, connection_options, config)
         super(connection, logger)
 
@@ -135,16 +120,14 @@ module ActiveRecord
                                         self.class.type_cast_config_to_integer(config.fetch(:statement_limit) { 1000 }))
         @config = config
 
+        @visitor = Arel::Visitors::SQLite.new self
+        @quoted_column_names = {}
+
         if self.class.type_cast_config_to_boolean(config.fetch(:prepared_statements) { true })
           @prepared_statements = true
-          @visitor = Arel::Visitors::SQLite.new self
         else
-          @visitor = unprepared_visitor
+          @prepared_statements = false
         end
-      end
-
-      def adapter_name #:nodoc:
-        'SQLite'
       end
 
       def supports_ddl_transactions?
@@ -178,7 +161,7 @@ module ActiveRecord
         true
       end
 
-      def supports_add_column?
+      def supports_views?
         true
       end
 
@@ -225,10 +208,25 @@ module ActiveRecord
 
       # QUOTING ==================================================
 
-      def quote(value, column = nil)
-        if value.kind_of?(String) && column && column.type == :binary
-          s = value.unpack("H*")[0]
-          "x'#{s}'"
+      def _quote(value) # :nodoc:
+        case value
+        when Type::Binary::Data
+          "x'#{value.hex}'"
+        else
+          super
+        end
+      end
+
+      def _type_cast(value) # :nodoc:
+        case value
+        when BigDecimal
+          value.to_f
+        when String
+          if value.encoding == Encoding::ASCII_8BIT
+            super(value.encode(Encoding::UTF_8))
+          else
+            super
+          end
         else
           super
         end
@@ -243,37 +241,16 @@ module ActiveRecord
       end
 
       def quote_column_name(name) #:nodoc:
-        %Q("#{name.to_s.gsub('"', '""')}")
+        @quoted_column_names[name] ||= %Q("#{name.to_s.gsub('"', '""')}")
       end
 
-      # Quote date/time values for use in SQL input. Includes microseconds
-      # if the value is a Time responding to usec.
-      def quoted_date(value) #:nodoc:
-        if value.respond_to?(:usec)
-          "#{super}.#{sprintf("%06d", value.usec)}"
-        else
-          super
-        end
-      end
-
-      def type_cast(value, column) # :nodoc:
-        return value.to_f if BigDecimal === value
-        return super unless String === value
-        return super unless column && value
-
-        value = super
-        if column.type == :string && value.encoding == Encoding::ASCII_8BIT
-          logger.error "Binary data inserted for `string` type on column `#{column.name}`" if logger
-          value = value.encode Encoding::UTF_8
-        end
-        value
-      end
-
+      #--
       # DATABASE STATEMENTS ======================================
+      #++
 
       def explain(arel, binds = [])
         sql = "EXPLAIN QUERY PLAN #{to_sql(arel, binds)}"
-        ExplainPrettyPrinter.new.pp(exec_query(sql, 'EXPLAIN', binds))
+        ExplainPrettyPrinter.new.pp(exec_query(sql, 'EXPLAIN', []))
       end
 
       class ExplainPrettyPrinter
@@ -291,17 +268,18 @@ module ActiveRecord
       end
 
       def exec_query(sql, name = nil, binds = [])
-        type_casted_binds = binds.map { |col, val|
-          [col, type_cast(val, col)]
-        }
+        type_casted_binds = binds.map { |attr| type_cast(attr.value_for_database) }
 
-        log(sql, name, type_casted_binds) do
+        log(sql, name, binds) do
           # Don't cache statements if they are not prepared
           if without_prepared_statement?(binds)
             stmt    = @connection.prepare(sql)
-            cols    = stmt.columns
-            records = stmt.to_a
-            stmt.close
+            begin
+              cols    = stmt.columns
+              records = stmt.to_a
+            ensure
+              stmt.close
+            end
             stmt = records
           else
             cache = @statements[sql] ||= {
@@ -310,7 +288,7 @@ module ActiveRecord
             stmt = cache[:stmt]
             cols = cache[:cols] ||= stmt.columns
             stmt.reset!
-            stmt.bind_params type_casted_binds.map { |_, val| val }
+            stmt.bind_params type_casted_binds
           end
 
           ActiveRecord::Result.new(cols, stmt.to_a)
@@ -359,7 +337,7 @@ module ActiveRecord
         log('commit transaction',nil) { @connection.commit }
       end
 
-      def rollback_db_transaction #:nodoc:
+      def exec_rollback_db_transaction #:nodoc:
         log('rollback transaction',nil) { @connection.rollback }
       end
 
@@ -369,7 +347,7 @@ module ActiveRecord
         sql = <<-SQL
           SELECT name
           FROM sqlite_master
-          WHERE type = 'table' AND NOT name = 'sqlite_sequence'
+          WHERE (type = 'table' OR type = 'view') AND NOT name = 'sqlite_sequence'
         SQL
         sql << " AND name = #{quote_table_name(table_name)}" if table_name
 
@@ -382,7 +360,7 @@ module ActiveRecord
         table_name && tables(nil, table_name).any?
       end
 
-      # Returns an array of +SQLite3Column+ objects for the table specified by +table_name+.
+      # Returns an array of +Column+ objects for the table specified by +table_name+.
       def columns(table_name) #:nodoc:
         table_structure(table_name).map do |field|
           case field["dflt_value"]
@@ -394,7 +372,9 @@ module ActiveRecord
             field["dflt_value"] = $1.gsub('""', '"')
           end
 
-          SQLite3Column.new(field['name'], field['dflt_value'], field['type'], field['notnull'].to_i == 0)
+          sql_type = field['type']
+          type_metadata = fetch_type_metadata(sql_type)
+          new_column(field['name'], field['dflt_value'], type_metadata, field['notnull'].to_i == 0)
         end
       end
 
@@ -424,10 +404,9 @@ module ActiveRecord
       end
 
       def primary_key(table_name) #:nodoc:
-        column = table_structure(table_name).find { |field|
-          field['pk'] == 1
-        }
-        column && column['name']
+        pks = table_structure(table_name).select { |f| f['pk'] > 0 }
+        return nil unless pks.count == 1
+        pks[0]['name']
       end
 
       def remove_index!(table_name, index_name) #:nodoc:
@@ -445,12 +424,12 @@ module ActiveRecord
 
       # See: http://www.sqlite.org/lang_altertable.html
       # SQLite has an additional restriction on the ALTER TABLE statement
-      def valid_alter_table_options( type, options)
+      def valid_alter_table_type?(type)
         type.to_sym != :primary_key
       end
 
       def add_column(table_name, column_name, type, options = {}) #:nodoc:
-        if supports_add_column? && valid_alter_table_options( type, options )
+        if valid_alter_table_type?(type)
           super(table_name, column_name, type, options)
         else
           alter_table(table_name) do |definition|
@@ -495,17 +474,12 @@ module ActiveRecord
       end
 
       def rename_column(table_name, column_name, new_column_name) #:nodoc:
-        unless columns(table_name).detect{|c| c.name == column_name.to_s }
-          raise ActiveRecord::ActiveRecordError, "Missing column #{table_name}.#{column_name}"
-        end
-        alter_table(table_name, :rename => {column_name.to_s => new_column_name.to_s})
-        rename_column_indexes(table_name, column_name, new_column_name)
+        column = column_for(table_name, column_name)
+        alter_table(table_name, rename: {column.name => new_column_name.to_s})
+        rename_column_indexes(table_name, column.name, new_column_name)
       end
 
       protected
-        def select(sql, name = nil, binds = []) #:nodoc:
-          exec_query(sql, name, binds)
-        end
 
         def table_structure(table_name)
           structure = exec_query("PRAGMA table_info(#{quote_table_name(table_name)})", 'SCHEMA').to_hash
@@ -551,7 +525,7 @@ module ActiveRecord
           end
           copy_table_indexes(from, to, options[:rename] || {})
           copy_table_contents(from, to,
-            @definition.columns.map {|column| column.name},
+            @definition.columns.map(&:name),
             options[:rename] || {})
         end
 
@@ -564,7 +538,7 @@ module ActiveRecord
               name = name[1..-1]
             end
 
-            to_column_names = columns(to).map { |c| c.name }
+            to_column_names = columns(to).map(&:name)
             columns = index.columns.map {|c| rename[c] || c }.select do |column|
               to_column_names.include?(column)
             end
@@ -581,25 +555,14 @@ module ActiveRecord
         def copy_table_contents(from, to, columns, rename = {}) #:nodoc:
           column_mappings = Hash[columns.map {|name| [name, name]}]
           rename.each { |a| column_mappings[a.last] = a.first }
-          from_columns = columns(from).collect {|col| col.name}
+          from_columns = columns(from).collect(&:name)
           columns = columns.find_all{|col| from_columns.include?(column_mappings[col])}
+          from_columns_to_copy = columns.map { |col| column_mappings[col] }
           quoted_columns = columns.map { |col| quote_column_name(col) } * ','
+          quoted_from_columns = from_columns_to_copy.map { |col| quote_column_name(col) } * ','
 
-          quoted_to = quote_table_name(to)
-
-          raw_column_mappings = Hash[columns(from).map { |c| [c.name, c] }]
-
-          exec_query("SELECT * FROM #{quote_table_name(from)}").each do |row|
-            sql = "INSERT INTO #{quoted_to} (#{quoted_columns}) VALUES ("
-
-            column_values = columns.map do |col|
-              quote(row[column_mappings[col]], raw_column_mappings[col])
-            end
-
-            sql << column_values * ', '
-            sql << ')'
-            exec_query sql
-          end
+          exec_query("INSERT INTO #{quote_table_name(to)} (#{quoted_columns})
+                     SELECT #{quoted_from_columns} FROM #{quote_table_name(from)}")
         end
 
         def sqlite_version

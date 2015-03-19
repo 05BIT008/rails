@@ -5,13 +5,19 @@ require 'bigdecimal/util'
 require 'models/person'
 require 'models/topic'
 require 'models/developer'
+require 'models/computer'
 
 require MIGRATIONS_ROOT + "/valid/2_we_need_reminders"
 require MIGRATIONS_ROOT + "/rename/1_we_need_things"
 require MIGRATIONS_ROOT + "/rename/2_rename_things"
 require MIGRATIONS_ROOT + "/decimal/1_give_me_big_numbers"
 
-class BigNumber < ActiveRecord::Base; end
+class BigNumber < ActiveRecord::Base
+  unless current_adapter?(:PostgreSQLAdapter, :SQLite3Adapter)
+    attribute :value_of_e, :integer
+  end
+  attribute :my_house_population, :integer
+end
 
 class Reminder < ActiveRecord::Base; end
 
@@ -28,8 +34,7 @@ class MigrationTest < ActiveRecord::TestCase
       Reminder.connection.drop_table(table) rescue nil
     end
     Reminder.reset_column_information
-    ActiveRecord::Migration.verbose = true
-    ActiveRecord::Migration.message_count = 0
+    @verbose_was, ActiveRecord::Migration.verbose = ActiveRecord::Migration.verbose, false
     ActiveRecord::Base.connection.schema_cache.clear!
   end
 
@@ -57,8 +62,10 @@ class MigrationTest < ActiveRecord::TestCase
     end
     Person.connection.remove_column("people", "first_name") rescue nil
     Person.connection.remove_column("people", "middle_name") rescue nil
-    Person.connection.add_column("people", "first_name", :string, :limit => 40)
+    Person.connection.add_column("people", "first_name", :string)
     Person.reset_column_information
+
+    ActiveRecord::Migration.verbose = @verbose_was
   end
 
   def test_migrator_versions
@@ -75,6 +82,34 @@ class MigrationTest < ActiveRecord::TestCase
     assert_equal 0, ActiveRecord::Migrator.current_version
     assert_equal 3, ActiveRecord::Migrator.last_version
     assert_equal true, ActiveRecord::Migrator.needs_migration?
+
+    ActiveRecord::SchemaMigration.create!(:version => ActiveRecord::Migrator.last_version)
+    assert_equal true, ActiveRecord::Migrator.needs_migration?
+  ensure
+    ActiveRecord::Migrator.migrations_paths = old_path
+  end
+
+  def test_migration_detection_without_schema_migration_table
+    ActiveRecord::Base.connection.drop_table 'schema_migrations', if_exists: true
+
+    migrations_path = MIGRATIONS_ROOT + "/valid"
+    old_path = ActiveRecord::Migrator.migrations_paths
+    ActiveRecord::Migrator.migrations_paths = migrations_path
+
+    assert_equal true, ActiveRecord::Migrator.needs_migration?
+  ensure
+    ActiveRecord::Migrator.migrations_paths = old_path
+  end
+
+  def test_any_migrations
+    old_path = ActiveRecord::Migrator.migrations_paths
+    ActiveRecord::Migrator.migrations_paths = MIGRATIONS_ROOT + "/valid"
+
+    assert ActiveRecord::Migrator.any_migrations?
+
+    ActiveRecord::Migrator.migrations_paths = MIGRATIONS_ROOT + "/empty"
+
+    assert_not ActiveRecord::Migrator.any_migrations?
   ensure
     ActiveRecord::Migrator.migrations_paths = old_path
   end
@@ -84,10 +119,6 @@ class MigrationTest < ActiveRecord::TestCase
   end
 
   def test_create_table_with_force_true_does_not_drop_nonexisting_table
-    if Person.connection.table_exists?(:testings2)
-      Person.connection.drop_table :testings2
-    end
-
     # using a copy as we need the drop_table method to
     # continue to work for the ensure block of the test
     temp_conn = Person.connection.dup
@@ -98,7 +129,7 @@ class MigrationTest < ActiveRecord::TestCase
       t.column :foo, :string
     end
   ensure
-    Person.connection.drop_table :testings2 rescue nil
+    Person.connection.drop_table :testings2, if_exists: true
   end
 
   def connection
@@ -127,6 +158,7 @@ class MigrationTest < ActiveRecord::TestCase
 
     assert !BigNumber.table_exists?
     GiveMeBigNumbers.up
+    BigNumber.reset_column_information
 
     assert BigNumber.create(
       :bank_balance => 1586.43,
@@ -327,47 +359,6 @@ class MigrationTest < ActiveRecord::TestCase
     Reminder.reset_table_name
   end
 
-  def test_proper_table_name_on_migrator
-    reminder_class = new_isolated_reminder_class
-    assert_deprecated do
-      assert_equal "table", ActiveRecord::Migrator.proper_table_name('table')
-    end
-    assert_deprecated do
-      assert_equal "table", ActiveRecord::Migrator.proper_table_name(:table)
-    end
-    assert_deprecated do
-      assert_equal "reminders", ActiveRecord::Migrator.proper_table_name(reminder_class)
-    end
-    reminder_class.reset_table_name
-    assert_deprecated do
-      assert_equal reminder_class.table_name, ActiveRecord::Migrator.proper_table_name(reminder_class)
-    end
-
-    # Use the model's own prefix/suffix if a model is given
-    ActiveRecord::Base.table_name_prefix = "ARprefix_"
-    ActiveRecord::Base.table_name_suffix = "_ARsuffix"
-    reminder_class.table_name_prefix = 'prefix_'
-    reminder_class.table_name_suffix = '_suffix'
-    reminder_class.reset_table_name
-    assert_deprecated do
-      assert_equal "prefix_reminders_suffix", ActiveRecord::Migrator.proper_table_name(reminder_class)
-    end
-    reminder_class.table_name_prefix = ''
-    reminder_class.table_name_suffix = ''
-    reminder_class.reset_table_name
-
-    # Use AR::Base's prefix/suffix if string or symbol is given
-    ActiveRecord::Base.table_name_prefix = "prefix_"
-    ActiveRecord::Base.table_name_suffix = "_suffix"
-    reminder_class.reset_table_name
-    assert_deprecated do
-      assert_equal "prefix_table_suffix", ActiveRecord::Migrator.proper_table_name('table')
-    end
-    assert_deprecated do
-      assert_equal "prefix_table_suffix", ActiveRecord::Migrator.proper_table_name(:table)
-    end
-  end
-
   def test_proper_table_name_on_migration
     reminder_class = new_isolated_reminder_class
     migration = ActiveRecord::Migration.new
@@ -403,6 +394,7 @@ class MigrationTest < ActiveRecord::TestCase
     Thing.reset_table_name
     Thing.reset_sequence_name
     WeNeedThings.up
+    Thing.reset_column_information
 
     assert Thing.create("content" => "hello world")
     assert_equal "hello world", Thing.first.content
@@ -422,6 +414,7 @@ class MigrationTest < ActiveRecord::TestCase
     ActiveRecord::Base.table_name_suffix = '_suffix'
     Reminder.reset_table_name
     Reminder.reset_sequence_name
+    Reminder.reset_column_information
     WeNeedReminders.up
     assert Reminder.create("content" => "hello world", "remind_at" => Time.now)
     assert_equal "hello world", Reminder.first.content
@@ -433,8 +426,6 @@ class MigrationTest < ActiveRecord::TestCase
   end
 
   def test_create_table_with_binary_column
-    Person.connection.drop_table :binary_testings rescue nil
-
     assert_nothing_raised {
       Person.connection.create_table :binary_testings do |t|
         t.column "data", :binary, :null => false
@@ -446,33 +437,35 @@ class MigrationTest < ActiveRecord::TestCase
 
     assert_nil data_column.default
 
-    Person.connection.drop_table :binary_testings rescue nil
+    Person.connection.drop_table :binary_testings, if_exists: true
   end
 
-  def test_create_table_with_query
-    Person.connection.drop_table :table_from_query_testings rescue nil
-    Person.connection.create_table(:person, force: true)
+  unless mysql_enforcing_gtid_consistency?
+    def test_create_table_with_query
+      Person.connection.drop_table :table_from_query_testings rescue nil
+      Person.connection.create_table(:person, force: true)
 
-    Person.connection.create_table :table_from_query_testings, as: "SELECT id FROM person"
+      Person.connection.create_table :table_from_query_testings, as: "SELECT id FROM person"
 
-    columns = Person.connection.columns(:table_from_query_testings)
-    assert_equal 1, columns.length
-    assert_equal "id", columns.first.name
+      columns = Person.connection.columns(:table_from_query_testings)
+      assert_equal 1, columns.length
+      assert_equal "id", columns.first.name
 
-    Person.connection.drop_table :table_from_query_testings rescue nil
-  end
+      Person.connection.drop_table :table_from_query_testings rescue nil
+    end
 
-  def test_create_table_with_query_from_relation
-    Person.connection.drop_table :table_from_query_testings rescue nil
-    Person.connection.create_table(:person, force: true)
+    def test_create_table_with_query_from_relation
+      Person.connection.drop_table :table_from_query_testings rescue nil
+      Person.connection.create_table(:person, force: true)
 
-    Person.connection.create_table :table_from_query_testings, as: Person.select(:id)
+      Person.connection.create_table :table_from_query_testings, as: Person.select(:id)
 
-    columns = Person.connection.columns(:table_from_query_testings)
-    assert_equal 1, columns.length
-    assert_equal "id", columns.first.name
+      columns = Person.connection.columns(:table_from_query_testings)
+      assert_equal 1, columns.length
+      assert_equal "id", columns.first.name
 
-    Person.connection.drop_table :table_from_query_testings rescue nil
+      Person.connection.drop_table :table_from_query_testings rescue nil
+    end
   end
 
   if current_adapter? :OracleAdapter
@@ -515,11 +508,13 @@ class MigrationTest < ActiveRecord::TestCase
   if current_adapter?(:MysqlAdapter, :Mysql2Adapter, :PostgreSQLAdapter)
     def test_out_of_range_limit_should_raise
       Person.connection.drop_table :test_limits rescue nil
-      assert_raise(ActiveRecord::ActiveRecordError, "integer limit didn't raise") do
+      e = assert_raise(ActiveRecord::ActiveRecordError, "integer limit didn't raise") do
         Person.connection.create_table :test_integer_limits, :force => true do |t|
           t.column :bigone, :integer, :limit => 10
         end
       end
+
+      assert_match(/No integer type has byte size 10/, e.message)
 
       unless current_adapter?(:PostgreSQLAdapter)
         assert_raise(ActiveRecord::ActiveRecordError, "text limit didn't raise") do
@@ -596,13 +591,13 @@ if ActiveRecord::Base.connection.supports_bulk_alter?
           t.string :qualification, :experience
           t.integer :age, :default => 0
           t.date :birthdate
-          t.timestamps
+          t.timestamps null: true
         end
       end
 
       assert_equal 8, columns.size
       [:name, :qualification, :experience].each {|s| assert_equal :string, column(s).type }
-      assert_equal 0, column(:age).default
+      assert_equal '0', column(:age).default
     end
 
     def test_removing_columns
@@ -722,6 +717,8 @@ if ActiveRecord::Base.connection.supports_bulk_alter?
 end
 
 class CopyMigrationsTest < ActiveRecord::TestCase
+  include ActiveSupport::Testing::Stream
+
   def setup
   end
 
@@ -930,4 +927,5 @@ class CopyMigrationsTest < ActiveRecord::TestCase
   ensure
     ActiveRecord::Base.logger = old
   end
+
 end

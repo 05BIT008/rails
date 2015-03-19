@@ -11,17 +11,18 @@ module ActionController
   autoload :Caching
   autoload :Metal
   autoload :Middleware
+  autoload :Renderer
 
   autoload_under "metal" do
     autoload :Compatibility
     autoload :ConditionalGet
     autoload :Cookies
     autoload :DataStreaming
+    autoload :EtagWithTemplateDigest
     autoload :Flash
     autoload :ForceSSL
     autoload :Head
     autoload :Helpers
-    autoload :HideActions
     autoload :HttpAuthentication
     autoload :ImplicitRender
     autoload :Instrumentation
@@ -33,7 +34,6 @@ module ActionController
     autoload :Rendering
     autoload :RequestForgeryProtection
     autoload :Rescue
-    autoload :Responder
     autoload :Streaming
     autoload :StrongParameters
     autoload :Testing

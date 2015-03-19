@@ -31,6 +31,10 @@ class Customer < Struct.new(:name, :id)
   def persisted?
     id.present?
   end
+
+  def cache_key
+    name.to_s
+  end
 end
 
 module Quiz
@@ -91,17 +95,17 @@ class TestController < ApplicationController
 
   # :ported:
   def render_hello_world
-    render :template => "test/hello_world"
+    render "test/hello_world"
   end
 
   def render_hello_world_with_last_modified_set
     response.last_modified = Date.new(2008, 10, 10).to_time
-    render :template => "test/hello_world"
+    render "test/hello_world"
   end
 
   # :ported: compatibility
   def render_hello_world_with_forward_slash
-    render :template => "/test/hello_world"
+    render "/test/hello_world"
   end
 
   # :ported:
@@ -111,7 +115,7 @@ class TestController < ApplicationController
 
   # :deprecated:
   def render_template_in_top_directory_with_slash
-    render :template => '/shared'
+    render '/shared'
   end
 
   # :ported:
@@ -160,13 +164,6 @@ class TestController < ApplicationController
   end
 
   # :ported:
-  def render_file_as_string_with_instance_variables
-    @secret = 'in the sauce'
-    path = File.expand_path(File.join(File.dirname(__FILE__), '../../fixtures/test/render_file_with_ivar'))
-    render path
-  end
-
-  # :ported:
   def render_file_not_using_full_path
     @secret = 'in the sauce'
     render :file => 'test/render_file_with_ivar'
@@ -194,7 +191,7 @@ class TestController < ApplicationController
 
   def render_file_as_string_with_locals
     path = File.expand_path(File.join(File.dirname(__FILE__), '../../fixtures/test/render_file_with_locals'))
-    render path, :locals => {:secret => 'in the sauce'}
+    render file: path, :locals => {:secret => 'in the sauce'}
   end
 
   def accessing_request_in_template
@@ -460,6 +457,10 @@ class TestController < ApplicationController
     render :text => "foo"
   end
 
+  def render_with_assigns_option
+    render inline: '<%= @hello %>', assigns: { hello: "world" }
+  end
+
   def yield_content_for
     render :action => "content_for", :layout => "yield"
   end
@@ -534,6 +535,14 @@ class TestController < ApplicationController
 
   def partial_collection_with_as
     render :partial => "customer_with_var", :collection => [ Customer.new("david"), Customer.new("mary") ], :as => :customer
+  end
+
+  def partial_collection_with_iteration
+    render partial: "customer_iteration", collection: [ Customer.new("david"), Customer.new("mary"), Customer.new('christine') ]
+  end
+
+  def partial_collection_with_as_and_iteration
+    render partial: "customer_iteration_with_as", collection: [ Customer.new("david"), Customer.new("mary"), Customer.new('christine') ], as: :client
   end
 
   def partial_collection_with_counter
@@ -720,6 +729,11 @@ class RenderTest < ActionController::TestCase
     assert_equal "Elastica", @response.body
   end
 
+  def test_render_process
+    get :render_action_hello_world_as_string
+    assert_equal ["Hello world!"], @controller.process(:render_action_hello_world_as_string)
+  end
+
   # :ported:
   def test_render_from_variable
     get :render_hello_world_from_variable
@@ -781,12 +795,6 @@ class RenderTest < ActionController::TestCase
   end
 
   # :ported:
-  def test_render_file_as_string_with_instance_variables
-    get :render_file_as_string_with_instance_variables
-    assert_equal "The secret is in the sauce\n", @response.body
-  end
-
-  # :ported:
   def test_render_file_not_using_full_path
     get :render_file_not_using_full_path
     assert_equal "The secret is in the sauce\n", @response.body
@@ -834,7 +842,7 @@ class RenderTest < ActionController::TestCase
   def test_render_text_with_nil
     get :render_text_with_nil
     assert_response 200
-    assert_equal ' ', @response.body
+    assert_equal '', @response.body
   end
 
   # :ported:
@@ -857,12 +865,12 @@ class RenderTest < ActionController::TestCase
 
   # :ported:
   def test_attempt_to_access_object_method
-    assert_raise(AbstractController::ActionNotFound, "No action responded to [clone]") { get :clone }
+    assert_raise(AbstractController::ActionNotFound) { get :clone }
   end
 
   # :ported:
   def test_private_methods
-    assert_raise(AbstractController::ActionNotFound, "No action responded to [determine_layout]") { get :determine_layout }
+    assert_raise(AbstractController::ActionNotFound) { get :determine_layout }
   end
 
   # :ported:
@@ -953,23 +961,23 @@ class RenderTest < ActionController::TestCase
   end
 
   def test_accessing_params_in_template
-    get :accessing_params_in_template, :name => "David"
+    get :accessing_params_in_template, params: { name: "David" }
     assert_equal "Hello: David", @response.body
   end
 
   def test_accessing_local_assigns_in_inline_template
-    get :accessing_local_assigns_in_inline_template, :local_name => "Local David"
+    get :accessing_local_assigns_in_inline_template, params: { local_name: "Local David" }
     assert_equal "Goodbye, Local David", @response.body
     assert_equal "text/html", @response.content_type
   end
 
   def test_should_implicitly_render_html_template_from_xhr_request
-    xhr :get, :render_implicit_html_template_from_xhr_request
+    get :render_implicit_html_template_from_xhr_request, xhr: true
     assert_equal "XHR!\nHello HTML!", @response.body
   end
 
   def test_should_implicitly_render_js_template_without_layout
-    xhr :get, :render_implicit_js_template_without_layout, :format => :js
+    get :render_implicit_js_template_without_layout, format: :js, xhr: true
     assert_no_match %r{<html>}, @response.body
   end
 
@@ -1022,7 +1030,7 @@ class RenderTest < ActionController::TestCase
 
   def test_rendering_nothing_on_layout
     get :rendering_nothing_on_layout
-    assert_equal " ", @response.body
+    assert_equal '', @response.body
   end
 
   def test_render_to_string_doesnt_break_assigns
@@ -1042,7 +1050,7 @@ class RenderTest < ActionController::TestCase
   end
 
   def test_accessing_params_in_template_with_layout
-    get :accessing_params_in_template_with_layout, :name => "David"
+    get :accessing_params_in_template_with_layout, params: { name: "David" }
     assert_equal "<html>Hello: David</html>", @response.body
   end
 
@@ -1100,6 +1108,11 @@ class RenderTest < ActionController::TestCase
   def test_render_text_with_assigns
     get :render_text_with_assigns
     assert_equal "world", assigns["hello"]
+  end
+
+  def test_render_text_with_assigns_option
+    get :render_with_assigns_option
+    assert_equal 'world', response.body
   end
 
   # :ported:
@@ -1232,6 +1245,16 @@ class RenderTest < ActionController::TestCase
     assert_equal "david david davidmary mary mary", @response.body
   end
 
+  def test_partial_collection_with_iteration
+    get :partial_collection_with_iteration
+    assert_equal "3-0: david-first3-1: mary3-2: christine-last", @response.body
+  end
+
+  def test_partial_collection_with_as_and_iteration
+    get :partial_collection_with_as_and_iteration
+    assert_equal "3-0: david-first3-1: mary3-2: christine-last", @response.body
+  end
+
   def test_partial_collection_with_counter
     get :partial_collection_with_counter
     assert_equal "david0mary1", @response.body
@@ -1332,4 +1355,3 @@ class RenderTest < ActionController::TestCase
     assert_equal "Before (Anthony)\nInside from partial (Anthony)\nAfter\nBefore (David)\nInside from partial (David)\nAfter\nBefore (Ramm)\nInside from partial (Ramm)\nAfter", @response.body
   end
 end
-

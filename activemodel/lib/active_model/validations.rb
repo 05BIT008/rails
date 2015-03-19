@@ -39,6 +39,7 @@ module ActiveModel
     extend ActiveSupport::Concern
 
     included do
+      extend ActiveModel::Naming
       extend ActiveModel::Callbacks
       extend ActiveModel::Translation
 
@@ -67,8 +68,9 @@ module ActiveModel
       #
       # Options:
       # * <tt>:on</tt> - Specifies the contexts where this validation is active.
-      #   You can pass a symbol or an array of symbols.
-      #   (e.g. <tt>on: :create</tt> or <tt>on: :custom_validation_context</tt> or
+      #   Runs in all validation contexts by default (nil). You can pass a symbol
+      #   or an array of symbols. (e.g. <tt>on: :create</tt> or
+      #   <tt>on: :custom_validation_context</tt> or
       #   <tt>on: [:create, :custom_validation_context]</tt>)
       # * <tt>:allow_nil</tt> - Skip validation if attribute is +nil+.
       # * <tt>:allow_blank</tt> - Skip validation if attribute is blank.
@@ -84,6 +86,8 @@ module ActiveModel
       def validates_each(*attr_names, &block)
         validates_with BlockValidator, _merge_attributes(attr_names), &block
       end
+
+      VALID_OPTIONS_FOR_VALIDATE = [:on, :if, :unless, :prepend].freeze
 
       # Adds a validation method or block to the class. This is useful when
       # overriding the +validate+ instance method becomes too unwieldy and
@@ -127,8 +131,9 @@ module ActiveModel
       #
       # Options:
       # * <tt>:on</tt> - Specifies the contexts where this validation is active.
-      #   You can pass a symbol or an array of symbols.
-      #   (e.g. <tt>on: :create</tt> or <tt>on: :custom_validation_context</tt> or
+      #   Runs in all validation contexts by default (nil). You can pass a symbol
+      #   or an array of symbols. (e.g. <tt>on: :create</tt> or
+      #   <tt>on: :custom_validation_context</tt> or
       #   <tt>on: [:create, :custom_validation_context]</tt>)
       # * <tt>:if</tt> - Specifies a method, proc or string to call to determine
       #   if the validation should occur (e.g. <tt>if: :allow_validation</tt>,
@@ -141,13 +146,23 @@ module ActiveModel
       #   value.
       def validate(*args, &block)
         options = args.extract_options!
+
+        if args.all? { |arg| arg.is_a?(Symbol) }
+          options.each_key do |k|
+            unless VALID_OPTIONS_FOR_VALIDATE.include?(k)
+              raise ArgumentError.new("Unknown key: #{k.inspect}. Valid keys are: #{VALID_OPTIONS_FOR_VALIDATE.map(&:inspect).join(', ')}. Perhaps you meant to call `validates` instead of `validate`?")
+            end
+          end
+        end
+
         if options.key?(:on)
           options = options.dup
           options[:if] = Array(options[:if])
-          options[:if].unshift lambda { |o|
+          options[:if].unshift ->(o) {
             Array(options[:on]).include?(o.validation_context)
           }
         end
+
         args << options
         set_callback(:validate, *args, &block)
       end
@@ -356,6 +371,15 @@ module ActiveModel
       !valid?(context)
     end
 
+    # Runs all the validations within the specified context. Returns +true+ if
+    # no errors are found, raises +ValidationError+ otherwise.
+    #
+    # Validations with no <tt>:on</tt> option will run no matter the context. Validations with
+    # some <tt>:on</tt> option will only run in the specified context.
+    def validate!(context = nil)
+      valid?(context) || raise_validation_error
+    end
+
     # Hook method defining how an attribute value should be retrieved. By default
     # this is assumed to be an instance named after the attribute. Override this
     # method in subclasses should you need to retrieve the value for a given
@@ -377,8 +401,32 @@ module ActiveModel
   protected
 
     def run_validations! #:nodoc:
-      run_callbacks :validate
+      _run_validate_callbacks
       errors.empty?
+    end
+
+    def raise_validation_error
+      raise(ValidationError.new(self))
+    end
+  end
+
+  # = Active Model ValidationError
+  #
+  # Raised by <tt>validate!</tt> when the model is invalid. Use the
+  # +model+ method to retrieve the record which did not validate.
+  #
+  #   begin
+  #     complex_operation_that_internally_calls_validate!
+  #   rescue ActiveModel::ValidationError => invalid
+  #     puts invalid.model.errors
+  #   end
+  class ValidationError < StandardError
+    attr_reader :model
+
+    def initialize(model)
+      @model = model
+      errors = @model.errors.full_messages.join(", ")
+      super(I18n.t(:"#{@model.class.i18n_scope}.errors.messages.model_invalid", errors: errors, default: :"errors.messages.model_invalid"))
     end
   end
 end

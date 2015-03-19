@@ -33,7 +33,7 @@ module ActiveRecord
         end
 
         def query_scope(ids)
-          scope.where(association_key.in(ids))
+          scope.where(association_key_name => ids)
         end
 
         def table
@@ -57,9 +57,15 @@ module ActiveRecord
         end
 
         def owners_by_key
-          @owners_by_key ||= owners.group_by do |owner|
-            owner[owner_key_name]
-          end
+          @owners_by_key ||= if key_conversion_required?
+                               owners.group_by do |owner|
+                                 owner[owner_key_name].to_s
+                               end
+                             else
+                               owners.group_by do |owner|
+                                 owner[owner_key_name]
+                               end
+                             end
         end
 
         def options
@@ -93,13 +99,28 @@ module ActiveRecord
           records_by_owner
         end
 
+        def key_conversion_required?
+          association_key_type != owner_key_type
+        end
+
+        def association_key_type
+          @klass.type_for_attribute(association_key_name.to_s).type
+        end
+
+        def owner_key_type
+          @model.type_for_attribute(owner_key_name.to_s).type
+        end
+
         def load_slices(slices)
           @preloaded_records = slices.flat_map { |slice|
             records_for(slice)
           }
 
           @preloaded_records.map { |record|
-            [record, record[association_key_name]]
+            key = record[association_key_name]
+            key = key.to_s if key_conversion_required?
+
+            [record, key]
           }
         end
 
@@ -110,27 +131,30 @@ module ActiveRecord
         def build_scope
           scope = klass.unscoped
 
-          values         = reflection_scope.values
+          values = reflection_scope.values
           preload_values = preload_scope.values
 
-          scope.where_values      = Array(values[:where])      + Array(preload_values[:where])
+          scope.where_clause = reflection_scope.where_clause + preload_scope.where_clause
           scope.references_values = Array(values[:references]) + Array(preload_values[:references])
 
-          scope.select!   preload_values[:select] || values[:select] || table[Arel.star]
+          scope._select! preload_values[:select] || values[:select] || table[Arel.star]
           scope.includes! preload_values[:includes] || values[:includes]
-
-          if preload_values.key? :order
-            scope.order! preload_values[:order]
+          if preload_scope.joins_values.any?
+            scope.joins!(preload_scope.joins_values)
           else
-            if values.key? :order
-              scope.order! values[:order]
-            end
+            scope.joins!(reflection_scope.joins_values)
+          end
+          scope.order! preload_values[:order] || values[:order]
+
+          if preload_values[:readonly] || values[:readonly]
+            scope.readonly!
           end
 
           if options[:as]
             scope.where!(klass.table_name => { reflection.type => model.base_class.sti_name })
           end
 
+          scope.unscope_values = Array(values[:unscope])
           klass.default_scoped.merge(scope)
         end
       end

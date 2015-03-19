@@ -8,8 +8,8 @@ module ActiveRecord
       test 'does not duplicate conditions' do
         scope = AssociationScope.scope(Author.new.association(:welcome_posts),
                                         Author.connection)
-        wheres = scope.where_values.map(&:right)
-        assert_equal wheres.uniq, wheres
+        binds = scope.where_clause.binds.map(&:value)
+        assert_equal binds.uniq, binds
       end
     end
   end

@@ -1,7 +1,6 @@
 require 'active_support/core_ext/hash/slice'
 require 'active_support/core_ext/hash/except'
 require 'active_support/core_ext/module/anonymous'
-require 'active_support/core_ext/struct'
 require 'action_dispatch/http/mime_type'
 
 module ActionController
@@ -86,7 +85,7 @@ module ActionController
         new name, format, include, exclude, nil, nil
       end
 
-      def initialize(name, format, include, exclude, klass, model) # nodoc
+      def initialize(name, format, include, exclude, klass, model) # :nodoc:
         super
         @include_set = include
         @name_set    = name
@@ -132,7 +131,7 @@ module ActionController
       private
       # Determine the wrapper model from the controller's name. By convention,
       # this could be done by trying to find the defined model that has the
-      # same singularize name as the controller. For example, +UsersController+
+      # same singular name as the controller. For example, +UsersController+
       # will try to find if the +User+ model exists.
       #
       # This method also does namespace lookup. Foo::Bar::UsersController will
@@ -244,7 +243,7 @@ module ActionController
         request.parameters.merge! wrapped_hash
         request.request_parameters.merge! wrapped_hash
 
-        # This will make the wrapped hash displayed in the log file
+        # This will display the wrapped hash in the log file
         request.filtered_parameters.merge! wrapped_filtered_hash
       end
       super
@@ -252,7 +251,7 @@ module ActionController
 
     private
 
-      # Returns the wrapper key which will use to stored wrapped parameters.
+      # Returns the wrapper key which will be used to stored wrapped parameters.
       def _wrapper_key
         _wrapper_options.name
       end

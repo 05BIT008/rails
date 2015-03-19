@@ -10,15 +10,18 @@ require 'models/reply'
 require 'models/minivan'
 require 'models/speedometer'
 require 'models/ship_part'
-
-Company.has_many :accounts
+require 'models/treasure'
 
 class NumericData < ActiveRecord::Base
   self.table_name = 'numeric_data'
+
+  attribute :world_population, :integer
+  attribute :my_house_population, :integer
+  attribute :atoms_in_universe, :integer
 end
 
 class CalculationsTest < ActiveRecord::TestCase
-  fixtures :companies, :accounts, :topics
+  fixtures :companies, :accounts, :topics, :speedometers, :minivans
 
   def test_should_sum_field
     assert_equal 318, Account.sum(:credit_limit)
@@ -47,11 +50,6 @@ class CalculationsTest < ActiveRecord::TestCase
 
   def test_should_return_nil_as_average
     assert_nil NumericData.average(:bank_balance)
-  end
-
-  def test_type_cast_calculated_value_should_convert_db_averages_of_fixnum_class_to_decimal
-    assert_equal 0, NumericData.all.send(:type_cast_calculated_value, 0, nil, 'avg')
-    assert_equal 53.0, NumericData.all.send(:type_cast_calculated_value, 53, nil, 'avg')
   end
 
   def test_should_get_maximum_of_field
@@ -464,7 +462,6 @@ class CalculationsTest < ActiveRecord::TestCase
     assert_equal 7, Company.includes(:contracts).sum(:developer_id)
   end
 
-
   def test_from_option_with_specified_index
     if Edge.connection.adapter_name == 'MySQL' or Edge.connection.adapter_name == 'Mysql2'
       assert_equal Edge.count(:all), Edge.from('edges USE INDEX(unique_edge_index)').count(:all)
@@ -605,5 +602,38 @@ class CalculationsTest < ActiveRecord::TestCase
     taks_relation = Topic.select(:approved, :id).order(:id)
     assert_equal [1,2,3,4,5], taks_relation.pluck(:id)
     assert_equal [false, true, true, true, true], taks_relation.pluck(:approved)
+  end
+
+  def test_pluck_columns_with_same_name
+    expected = [["The First Topic", "The Second Topic of the day"], ["The Third Topic of the day", "The Fourth Topic of the day"]]
+    actual = Topic.joins(:replies)
+      .pluck('topics.title', 'replies_topics.title')
+    assert_equal expected, actual
+  end
+
+  def test_calculation_with_polymorphic_relation
+    part = ShipPart.create!(name: "has trinket")
+    part.trinkets.create!
+
+    assert_equal part.id, ShipPart.joins(:trinkets).sum(:id)
+  end
+
+  def test_pluck_joined_with_polymorphic_relation
+    part = ShipPart.create!(name: "has trinket")
+    part.trinkets.create!
+
+    assert_equal [part.id], ShipPart.joins(:trinkets).pluck(:id)
+  end
+
+  def test_grouped_calculation_with_polymorphic_relation
+    part = ShipPart.create!(name: "has trinket")
+    part.trinkets.create!
+
+    assert_equal({ "has trinket" => part.id }, ShipPart.joins(:trinkets).group("ship_parts.name").sum(:id))
+  end
+
+  def test_calculation_grouped_by_association_doesnt_error_when_no_records_have_association
+    Client.update_all(client_of: nil)
+    assert_equal({ nil => Client.count }, Client.group(:firm).count)
   end
 end

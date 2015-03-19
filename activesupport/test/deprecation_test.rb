@@ -1,4 +1,5 @@
 require 'abstract_unit'
+require 'active_support/testing/stream'
 
 class Deprecatee
   def initialize
@@ -36,6 +37,8 @@ end
 
 
 class DeprecationTest < ActiveSupport::TestCase
+  include ActiveSupport::Testing::Stream
+
   def setup
     # Track the last warning.
     @old_behavior = ActiveSupport::Deprecation.behavior
@@ -355,4 +358,5 @@ class DeprecationTest < ActiveSupport::TestCase
       end
       deprecator
     end
+
 end

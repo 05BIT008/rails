@@ -29,28 +29,12 @@ module ActiveRecord
 
   module ConnectionAdapters
     class Mysql2Adapter < AbstractMysqlAdapter
-
-      class Column < AbstractMysqlAdapter::Column # :nodoc:
-        def adapter
-          Mysql2Adapter
-        end
-      end
-
-      ADAPTER_NAME = 'Mysql2'
+      ADAPTER_NAME = 'Mysql2'.freeze
 
       def initialize(connection, logger, connection_options, config)
         super
-        @visitor = BindSubstitution.new self
+        @prepared_statements = false
         configure_connection
-      end
-
-      MAX_INDEX_LENGTH_FOR_UTF8MB4 = 191
-      def initialize_schema_migrations_table
-        if @config[:encoding] == 'utf8mb4'
-          ActiveRecord::SchemaMigration.create_table(MAX_INDEX_LENGTH_FOR_UTF8MB4)
-        else
-          ActiveRecord::SchemaMigration.create_table
-        end
       end
 
       def supports_explain?
@@ -69,29 +53,21 @@ module ActiveRecord
         end
       end
 
-      def new_column(field, default, type, null, collation, extra = "") # :nodoc:
-        Column.new(field, default, type, null, collation, strict_mode?, extra)
-      end
-
       def error_number(exception)
         exception.error_number if exception.respond_to?(:error_number)
       end
 
+      #--
       # QUOTING ==================================================
+      #++
 
       def quote_string(string)
         @connection.escape(string)
       end
 
-      def quoted_date(value)
-        if value.acts_like?(:time) && value.respond_to?(:usec)
-          "#{super}.#{sprintf("%06d", value.usec)}"
-        else
-          super
-        end
-      end
-
+      #--
       # CONNECTION MANAGEMENT ====================================
+      #++
 
       def active?
         return false unless @connection
@@ -115,7 +91,9 @@ module ActiveRecord
         end
       end
 
+      #--
       # DATABASE STATEMENTS ======================================
+      #++
 
       def explain(arel, binds = [])
         sql     = "EXPLAIN #{to_sql(arel, binds.dup)}"
@@ -243,11 +221,6 @@ module ActiveRecord
 
       alias exec_without_stmt exec_query
 
-      # Returns an ActiveRecord::Result instance.
-      def select(sql, name = nil, binds = [])
-        exec_query(sql, name)
-      end
-
       def insert_sql(sql, name = nil, pk = nil, id_value = nil, sequence_name = nil)
         super
         id_value || @connection.last_id
@@ -280,8 +253,8 @@ module ActiveRecord
         super
       end
 
-      def version
-        @version ||= @connection.info[:version].scan(/^(\d+)\.(\d+)\.(\d+)/).flatten.map { |v| v.to_i }
+      def full_version
+        @full_version ||= @connection.info[:version]
       end
 
       def set_field_encoding field_name

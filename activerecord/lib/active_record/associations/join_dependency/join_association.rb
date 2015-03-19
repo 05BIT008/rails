@@ -21,8 +21,11 @@ module ActiveRecord
           super && reflection == other.reflection
         end
 
+        JoinInformation = Struct.new :joins, :binds
+
         def join_constraints(foreign_table, foreign_klass, node, join_type, tables, scope_chain, chain)
           joins         = []
+          binds         = []
           tables        = tables.reverse
 
           scope_chain_index = 0
@@ -34,38 +37,46 @@ module ActiveRecord
             table = tables.shift
             klass = reflection.klass
 
-            case reflection.source_macro
-            when :belongs_to
-              key         = reflection.association_primary_key
-              foreign_key = reflection.foreign_key
-            else
-              key         = reflection.foreign_key
-              foreign_key = reflection.active_record_primary_key
-            end
+            join_keys   = reflection.join_keys(klass)
+            key         = join_keys.key
+            foreign_key = join_keys.foreign_key
 
             constraint = build_constraint(klass, table, key, foreign_table, foreign_key)
 
+            predicate_builder = PredicateBuilder.new(TableMetadata.new(klass, table))
             scope_chain_items = scope_chain[scope_chain_index].map do |item|
               if item.is_a?(Relation)
                 item
               else
-                ActiveRecord::Relation.create(klass, table).instance_exec(node, &item)
+                ActiveRecord::Relation.create(klass, table, predicate_builder)
+                  .instance_exec(node, &item)
               end
             end
             scope_chain_index += 1
 
-            scope_chain_items.concat [klass.send(:build_default_scope, ActiveRecord::Relation.create(klass, table))].compact
+            relation = ActiveRecord::Relation.create(
+              klass,
+              table,
+              predicate_builder,
+            )
+            scope_chain_items.concat [klass.send(:build_default_scope, relation)].compact
 
             rel = scope_chain_items.inject(scope_chain_items.shift) do |left, right|
               left.merge right
             end
 
-            if reflection.type
-              constraint = constraint.and table[reflection.type].eq foreign_klass.base_class.name
+            if rel && !rel.arel.constraints.empty?
+              binds += rel.bound_attributes
+              constraint = constraint.and rel.arel.constraints
             end
 
-            if rel && !rel.arel.constraints.empty?
-              constraint = constraint.and rel.arel.constraints
+            if reflection.type
+              value = foreign_klass.base_class.name
+              column = klass.columns_hash[reflection.type.to_s]
+
+              substitute = klass.connection.substitute_at(column)
+              binds << Relation::QueryAttribute.new(column.name, value, klass.type_for_attribute(column.name))
+              constraint = constraint.and table[reflection.type].eq substitute
             end
 
             joins << table.create_join(table, table.create_on(constraint), join_type)
@@ -74,7 +85,7 @@ module ActiveRecord
             foreign_table, foreign_klass = table, klass
           end
 
-          joins
+          JoinInformation.new joins, binds
         end
 
         #  Builds equality condition.
@@ -86,7 +97,7 @@ module ActiveRecord
         #  end
         #
         #  If I execute `Physician.joins(:appointments).to_a` then
-        #    reflection    # => #<ActiveRecord::Reflection::AssociationReflection @macro=:has_many ...>
+        #    klass         # => Physician
         #    table         # => #<Arel::Table @name="appointments" ...>
         #    key           # =>  physician_id
         #    foreign_table # => #<Arel::Table @name="physicians" ...>

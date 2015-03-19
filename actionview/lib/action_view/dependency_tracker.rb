@@ -53,6 +53,12 @@ module ActionView
         \s*                          # followed by optional spaces
       /x
 
+      # Part of any hash containing the :layout key
+      LAYOUT_HASH_KEY = /
+        (?:\blayout:|:layout\s*=>)   # layout key in either old or new style hash syntax
+        \s*                          # followed by optional spaces
+      /x
+
       # Matches:
       #   partial: "comments/comment", collection: @all_comments => "comments/comment"
       #   (object: @single_comment, partial: "comments/comment") => "comments/comment"
@@ -65,9 +71,15 @@ module ActionView
       #    topics          => "topics/topic"
       #   (message.topics) => "topics/topic"
       RENDER_ARGUMENTS = /\A
-        (?:\s*\(?\s*)                             # optional opening paren surrounded by spaces
-        (?:.*?#{PARTIAL_HASH_KEY})?               # optional hash, up to the partial key declaration
-        (?:#{STRING}|#{VARIABLE_OR_METHOD_CHAIN}) # finally, the dependency name of interest
+        (?:\s*\(?\s*)                                  # optional opening paren surrounded by spaces
+        (?:.*?#{PARTIAL_HASH_KEY}|#{LAYOUT_HASH_KEY})? # optional hash, up to the partial or layout key declaration
+        (?:#{STRING}|#{VARIABLE_OR_METHOD_CHAIN})      # finally, the dependency name of interest
+      /xm
+
+      LAYOUT_DEPENDENCY = /\A
+        (?:\s*\(?\s*)                                  # optional opening paren surrounded by spaces
+        (?:.*?#{LAYOUT_HASH_KEY})                      # check if the line has layout key declaration
+        (?:#{STRING}|#{VARIABLE_OR_METHOD_CHAIN})      # finally, the dependency name of interest
       /xm
 
       def self.call(name, template)
@@ -85,8 +97,8 @@ module ActionView
       attr_reader :name, :template
       private :name, :template
 
-      private
 
+      private
         def source
           template.source
         end
@@ -100,13 +112,18 @@ module ActionView
           render_calls = source.split(/\brender\b/).drop(1)
 
           render_calls.each do |arguments|
-            arguments.scan(RENDER_ARGUMENTS) do
-              add_dynamic_dependency(render_dependencies, Regexp.last_match[:dynamic])
-              add_static_dependency(render_dependencies, Regexp.last_match[:static])
-            end
+            add_dependencies(render_dependencies, arguments, LAYOUT_DEPENDENCY)
+            add_dependencies(render_dependencies, arguments, RENDER_ARGUMENTS)
           end
 
           render_dependencies.uniq
+        end
+
+        def add_dependencies(render_dependencies, arguments, pattern)
+          arguments.scan(pattern) do
+            add_dynamic_dependency(render_dependencies, Regexp.last_match[:dynamic])
+            add_static_dependency(render_dependencies, Regexp.last_match[:static])
+          end
         end
 
         def add_dynamic_dependency(dependencies, dependency)

@@ -1,4 +1,3 @@
-# encoding: utf-8
 
 require 'abstract_unit'
 require 'multibyte_test_helpers'
@@ -10,7 +9,6 @@ require 'tmpdir'
 class Downloader
   def self.download(from, to)
     unless File.exist?(to)
-      $stderr.puts "Downloading #{from} to #{to}"
       unless File.exist?(File.dirname(to))
         system "mkdir -p #{File.dirname(to)}"
       end
@@ -20,8 +18,9 @@ class Downloader
             target.write l
           end
         end
-       end
-     end
+      end
+    end
+    true
   end
 end
 
@@ -31,11 +30,15 @@ class MultibyteConformanceTest < ActiveSupport::TestCase
   UNIDATA_URL = "http://www.unicode.org/Public/#{ActiveSupport::Multibyte::Unicode::UNICODE_VERSION}/ucd"
   UNIDATA_FILE = '/NormalizationTest.txt'
   CACHE_DIR = File.join(Dir.tmpdir, 'cache')
+  FileUtils.mkdir_p(CACHE_DIR)
+  RUN_P = begin
+            Downloader.download(UNIDATA_URL + UNIDATA_FILE, CACHE_DIR + UNIDATA_FILE)
+          rescue
+          end
 
   def setup
-    FileUtils.mkdir_p(CACHE_DIR)
-    Downloader.download(UNIDATA_URL + UNIDATA_FILE, CACHE_DIR + UNIDATA_FILE)
     @proxy = ActiveSupport::Multibyte::Chars
+    skip "Unable to download test data" unless RUN_P
   end
 
   def test_normalizations_C
@@ -111,7 +114,7 @@ class MultibyteConformanceTest < ActiveSupport::TestCase
           next if (line.empty? || line =~ /^\#/)
 
           cols, comment = line.split("#")
-          cols = cols.split(";").map{|e| e.strip}.reject{|e| e.empty? }
+          cols = cols.split(";").map(&:strip).reject(&:empty?)
           next unless cols.length == 5
 
           # codepoints are in hex in the test suite, pack wants them as integers

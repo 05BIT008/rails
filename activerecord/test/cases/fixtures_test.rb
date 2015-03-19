@@ -5,11 +5,13 @@ require 'models/admin/randomly_named_c1'
 require 'models/admin/user'
 require 'models/binary'
 require 'models/book'
+require 'models/bulb'
 require 'models/category'
 require 'models/company'
 require 'models/computer'
 require 'models/course'
 require 'models/developer'
+require 'models/computer'
 require 'models/joke'
 require 'models/matey'
 require 'models/parrot'
@@ -82,12 +84,6 @@ class FixturesTest < ActiveRecord::TestCase
 
     assert Course.find_by_name('Collection'), 'course is not in the database'
     assert fixtures.detect { |f| f.name == 'collections' }, "no fixtures named 'collections' in #{fixtures.map(&:name).inspect}"
-  end
-
-  def test_create_symbol_fixtures_is_deprecated
-    assert_deprecated do
-      ActiveRecord::FixtureSet.create_fixtures(FIXTURES_ROOT, :collections, :collections => 'Course') { Course.connection }
-    end
   end
 
   def test_attributes
@@ -277,7 +273,7 @@ class HasManyThroughFixture < ActiveSupport::TestCase
     Class.new(ActiveRecord::Base) { define_singleton_method(:name) { name } }
   end
 
-  def test_has_many_through
+  def test_has_many_through_with_default_table_name
     pt = make_model "ParrotTreasure"
     parrot = make_model "Parrot"
     treasure = make_model "Treasure"
@@ -294,6 +290,24 @@ class HasManyThroughFixture < ActiveSupport::TestCase
     fs = ActiveRecord::FixtureSet.new parrot.connection, "parrots", parrot, parrots
     rows = fs.table_rows
     assert_equal load_has_and_belongs_to_many['parrots_treasures'], rows['parrots_treasures']
+  end
+
+  def test_has_many_through_with_renamed_table
+    pt = make_model "ParrotTreasure"
+    parrot = make_model "Parrot"
+    treasure = make_model "Treasure"
+
+    pt.belongs_to :parrot, :class => parrot
+    pt.belongs_to :treasure, :class => treasure
+
+    parrot.has_many :parrot_treasures, :class => pt
+    parrot.has_many :treasures, :through => :parrot_treasures
+
+    parrots = File.join FIXTURES_ROOT, 'parrots'
+
+    fs = ActiveRecord::FixtureSet.new parrot.connection, "parrots", parrot, parrots
+    rows = fs.table_rows
+    assert_equal load_has_and_belongs_to_many['parrots_treasures'], rows['parrot_treasures']
   end
 
   def load_has_and_belongs_to_many
@@ -313,7 +327,7 @@ if Account.connection.respond_to?(:reset_pk_sequence!)
     fixtures :companies
 
     def setup
-      @instances = [Account.new(:credit_limit => 50), Company.new(:name => 'RoR Consulting')]
+      @instances = [Account.new(:credit_limit => 50), Company.new(:name => 'RoR Consulting'), Course.new(name: 'Test')]
       ActiveRecord::FixtureSet.reset_cache # make sure tables get reinitialized
     end
 
@@ -650,6 +664,7 @@ class LoadAllFixturesWithPathnameTest < ActiveRecord::TestCase
 end
 
 class FasterFixturesTest < ActiveRecord::TestCase
+  self.use_transactional_fixtures = false
   fixtures :categories, :authors
 
   def load_extra_fixture(name)
@@ -675,12 +690,13 @@ class FasterFixturesTest < ActiveRecord::TestCase
 end
 
 class FoxyFixturesTest < ActiveRecord::TestCase
-  fixtures :parrots, :parrots_pirates, :pirates, :treasures, :mateys, :ships, :computers, :developers, :"admin/accounts", :"admin/users"
+  fixtures :parrots, :parrots_pirates, :pirates, :treasures, :mateys, :ships, :computers,
+           :developers, :"admin/accounts", :"admin/users", :live_parrots, :dead_parrots
 
   if ActiveRecord::Base.connection.adapter_name == 'PostgreSQL'
     require 'models/uuid_parent'
     require 'models/uuid_child'
-    fixtures :uuid_parents, :uuid_children 
+    fixtures :uuid_parents, :uuid_children
   end
 
   def test_identifies_strings
@@ -795,6 +811,10 @@ class FoxyFixturesTest < ActiveRecord::TestCase
     assert_equal("X marks the spot!", pirates(:mark).catchphrase)
   end
 
+  def test_supports_label_interpolation_for_fixnum_label
+    assert_equal("#1 pirate!", pirates(1).catchphrase)
+  end
+
   def test_supports_polymorphic_belongs_to
     assert_equal(pirates(:redbeard), treasures(:sapphire).looter)
     assert_equal(parrots(:louis), treasures(:ruby).looter)
@@ -809,6 +829,12 @@ class FoxyFixturesTest < ActiveRecord::TestCase
   def test_supports_sti
     assert_kind_of DeadParrot, parrots(:polly)
     assert_equal pirates(:blackbeard), parrots(:polly).killer
+  end
+
+  def test_supports_sti_with_respective_files
+    assert_kind_of LiveParrot, live_parrots(:dusty)
+    assert_kind_of DeadParrot, dead_parrots(:deadbird)
+    assert_equal pirates(:blackbeard), dead_parrots(:deadbird).killer
   end
 
   def test_namespaced_models
@@ -827,29 +853,15 @@ class ActiveSupportSubclassWithFixturesTest < ActiveRecord::TestCase
   end
 end
 
-class FixtureLoadingTest < ActiveRecord::TestCase
-  def test_logs_message_for_failed_dependency_load
-    ActiveRecord::TestCase.expects(:require_dependency).with(:does_not_exist).raises(LoadError)
-    ActiveRecord::Base.logger.expects(:warn)
-    ActiveRecord::TestCase.try_to_load_dependency(:does_not_exist)
-  end
-
-  def test_does_not_logs_message_for_successful_dependency_load
-    ActiveRecord::TestCase.expects(:require_dependency).with(:works_out_fine)
-    ActiveRecord::Base.logger.expects(:warn).never
-    ActiveRecord::TestCase.try_to_load_dependency(:works_out_fine)
-  end
-end
-
 class CustomNameForFixtureOrModelTest < ActiveRecord::TestCase
   ActiveRecord::FixtureSet.reset_cache
 
   set_fixture_class :randomly_named_a9         =>
                         ClassNameThatDoesNotFollowCONVENTIONS,
                     :'admin/randomly_named_a9' =>
-                        Admin::ClassNameThatDoesNotFollowCONVENTIONS,
+                        Admin::ClassNameThatDoesNotFollowCONVENTIONS1,
                     'admin/randomly_named_b0'  =>
-                        Admin::ClassNameThatDoesNotFollowCONVENTIONS
+                        Admin::ClassNameThatDoesNotFollowCONVENTIONS2
 
   fixtures :randomly_named_a9, 'admin/randomly_named_a9',
            :'admin/randomly_named_b0'
@@ -860,14 +872,27 @@ class CustomNameForFixtureOrModelTest < ActiveRecord::TestCase
   end
 
   def test_named_accessor_for_randomly_named_namespaced_fixture_and_class
-    assert_kind_of Admin::ClassNameThatDoesNotFollowCONVENTIONS,
+    assert_kind_of Admin::ClassNameThatDoesNotFollowCONVENTIONS1,
                    admin_randomly_named_a9(:first_instance)
-    assert_kind_of Admin::ClassNameThatDoesNotFollowCONVENTIONS,
+    assert_kind_of Admin::ClassNameThatDoesNotFollowCONVENTIONS2,
                    admin_randomly_named_b0(:second_instance)
   end
 
   def test_table_name_is_defined_in_the_model
-    assert_equal 'randomly_named_table', ActiveRecord::FixtureSet::all_loaded_fixtures["admin/randomly_named_a9"].table_name
-    assert_equal 'randomly_named_table', Admin::ClassNameThatDoesNotFollowCONVENTIONS.table_name
+    assert_equal 'randomly_named_table2', ActiveRecord::FixtureSet::all_loaded_fixtures["admin/randomly_named_a9"].table_name
+    assert_equal 'randomly_named_table2', Admin::ClassNameThatDoesNotFollowCONVENTIONS1.table_name
+  end
+end
+
+class FixturesWithDefaultScopeTest < ActiveRecord::TestCase
+  fixtures :bulbs
+
+  test "inserts fixtures excluded by a default scope" do
+    assert_equal 1, Bulb.count
+    assert_equal 2, Bulb.unscoped.count
+  end
+
+  test "allows access to fixtures excluded by a default scope" do
+    assert_equal "special", bulbs(:special).name
   end
 end

@@ -9,7 +9,7 @@ module ActiveSupport
       #
       #   assert_not nil    # => true
       #   assert_not false  # => true
-      #   assert_not 'foo'  # => 'foo' is not nil or false
+      #   assert_not 'foo'  # => Expected "foo" to be nil or false
       #
       # An error message can be specified.
       #
@@ -66,7 +66,7 @@ module ActiveSupport
         exps = expressions.map { |e|
           e.respond_to?(:call) ? e : lambda { eval(e, block.binding) }
         }
-        before = exps.map { |e| e.call }
+        before = exps.map(&:call)
 
         yield
 

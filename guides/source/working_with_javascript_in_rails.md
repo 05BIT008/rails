@@ -1,3 +1,5 @@
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+
 Working with JavaScript in Rails
 ================================
 
@@ -158,7 +160,7 @@ is a helper that assists with writing forms. `form_for` takes a `:remote`
 option. It works like this:
 
 ```erb
-<%= form_for(@post, remote: true) do |f| %>
+<%= form_for(@article, remote: true) do |f| %>
   ...
 <% end %>
 ```
@@ -166,7 +168,7 @@ option. It works like this:
 This will generate the following HTML:
 
 ```html
-<form accept-charset="UTF-8" action="/posts" class="new_post" data-remote="true" id="new_post" method="post">
+<form accept-charset="UTF-8" action="/articles" class="new_article" data-remote="true" id="new_article" method="post">
   ...
 </form>
 ```
@@ -180,14 +182,42 @@ bind to the `ajax:success` event. On failure, use `ajax:error`. Check it out:
 
 ```coffeescript
 $(document).ready ->
-  $("#new_post").on("ajax:success", (e, data, status, xhr) ->
-    $("#new_post").append xhr.responseText
+  $("#new_article").on("ajax:success", (e, data, status, xhr) ->
+    $("#new_article").append xhr.responseText
   ).on "ajax:error", (e, xhr, status, error) ->
-    $("#new_post").append "<p>ERROR</p>"
+    $("#new_article").append "<p>ERROR</p>"
 ```
 
 Obviously, you'll want to be a bit more sophisticated than that, but it's a
 start. You can see more about the events [in the jquery-ujs wiki](https://github.com/rails/jquery-ujs/wiki/ajax).
+
+Another possibility is returning javascript directly from the server side on
+remote calls:
+
+```ruby
+# articles_controller
+def create
+  respond_to do |format|
+    if @article.save
+      format.html { ... }
+      format.js do
+        render js: <<-endjs
+          alert('Article saved successfully!');
+          window.location = '#{article_path(@article)}';
+        endjs
+      end
+    else
+      format.html { ... }
+      format.js do
+        render js: "alert('There are empty fields in the form!');"
+      end
+    end
+  end
+end
+```
+
+NOTE: If javascript is disabled in the user browser, `format.html { ... }`
+block should be executed as fallback.
 
 ### form_tag
 
@@ -196,7 +226,7 @@ is very similar to `form_for`. It has a `:remote` option that you can use like
 this:
 
 ```erb
-<%= form_tag('/posts', remote: true) do %>
+<%= form_tag('/articles', remote: true) do %>
   ...
 <% end %>
 ```
@@ -204,7 +234,7 @@ this:
 This will generate the following HTML:
 
 ```html
-<form accept-charset="UTF-8" action="/posts" data-remote="true" method="post">
+<form accept-charset="UTF-8" action="/articles" data-remote="true" method="post">
   ...
 </form>
 ```
@@ -219,21 +249,21 @@ is a helper that assists with generating links. It has a `:remote` option you
 can use like this:
 
 ```erb
-<%= link_to "a post", @post, remote: true %>
+<%= link_to "an article", @article, remote: true %>
 ```
 
 which generates
 
 ```html
-<a href="/posts/1" data-remote="true">a post</a>
+<a href="/articles/1" data-remote="true">an article</a>
 ```
 
 You can bind to the same Ajax events as `form_for`. Here's an example. Let's
-assume that we have a list of posts that can be deleted with just one
+assume that we have a list of articles that can be deleted with just one
 click. We would generate some HTML like this:
 
 ```erb
-<%= link_to "Delete post", @post, remote: true, method: :delete %>
+<%= link_to "Delete article", @article, remote: true, method: :delete %>
 ```
 
 and write some CoffeeScript like this:
@@ -241,7 +271,7 @@ and write some CoffeeScript like this:
 ```coffeescript
 $ ->
   $("a[data-remote]").on "ajax:success", (e, data, status, xhr) ->
-    alert "The post was deleted."
+    alert "The article was deleted."
 ```
 
 ### button_to
@@ -249,14 +279,14 @@ $ ->
 [`button_to`](http://api.rubyonrails.org/classes/ActionView/Helpers/UrlHelper.html#method-i-button_to) is a helper that helps you create buttons. It has a `:remote` option that you can call like this:
 
 ```erb
-<%= button_to "A post", @post, remote: true %>
+<%= button_to "An article", @article, remote: true %>
 ```
 
 this generates
 
 ```html
-<form action="/posts/1" class="button_to" data-remote="true" method="post">
-  <div><input type="submit" value="A post"></div>
+<form action="/articles/1" class="button_to" data-remote="true" method="post">
+  <div><input type="submit" value="An article"></div>
 </form>
 ```
 
@@ -355,7 +385,7 @@ This gem uses Ajax to speed up page rendering in most applications.
 
 Turbolinks attaches a click handler to all `<a>` on the page. If your browser
 supports
-[PushState](https://developer.mozilla.org/en-US/docs/DOM/Manipulating_the_browser_history#The_pushState(\).C2.A0method),
+[PushState](https://developer.mozilla.org/en-US/docs/Web/Guide/API/DOM/Manipulating_the_browser_history#The_pushState()_method),
 Turbolinks will make an Ajax request for the page, parse the response, and
 replace the entire `<body>` of the page with the `<body>` of the response. It
 will then use PushState to change the URL to the correct one, preserving

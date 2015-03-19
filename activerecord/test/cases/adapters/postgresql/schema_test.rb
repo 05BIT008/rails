@@ -1,4 +1,6 @@
 require "cases/helper"
+require 'models/default'
+require 'support/schema_dumping_helper'
 
 class SchemaTest < ActiveRecord::TestCase
   self.use_transactional_fixtures = false
@@ -50,6 +52,16 @@ class SchemaTest < ActiveRecord::TestCase
     self.table_name = 'things'
   end
 
+  class Song < ActiveRecord::Base
+    self.table_name = "music.songs"
+    has_and_belongs_to_many :albums
+  end
+
+  class Album < ActiveRecord::Base
+    self.table_name = "music.albums"
+    has_and_belongs_to_many :songs
+  end
+
   def setup
     @connection = ActiveRecord::Base.connection
     @connection.execute "CREATE SCHEMA #{SCHEMA_NAME} CREATE TABLE #{TABLE_NAME} (#{COLUMNS.join(',')})"
@@ -77,7 +89,7 @@ class SchemaTest < ActiveRecord::TestCase
   end
 
   def test_schema_names
-    assert_equal ["public", "schema_1", "test_schema", "test_schema2"], @connection.schema_names
+    assert_equal ["public", "test_schema", "test_schema2"], @connection.schema_names
   end
 
   def test_create_schema
@@ -109,6 +121,22 @@ class SchemaTest < ActiveRecord::TestCase
     assert !@connection.schema_names.include?("test_schema3")
   end
 
+  def test_habtm_table_name_with_schema
+    ActiveRecord::Base.connection.execute <<-SQL
+      DROP SCHEMA IF EXISTS music CASCADE;
+      CREATE SCHEMA music;
+      CREATE TABLE music.albums (id serial primary key);
+      CREATE TABLE music.songs (id serial primary key);
+      CREATE TABLE music.albums_songs (album_id integer, song_id integer);
+    SQL
+
+    song = Song.create
+    Album.create
+    assert_equal song, Song.includes(:albums).references(:albums).first
+  ensure
+    ActiveRecord::Base.connection.execute "DROP SCHEMA music CASCADE;"
+  end
+
   def test_raise_drop_schema_with_nonexisting_schema
     assert_raises(ActiveRecord::StatementInvalid) do
       @connection.drop_schema "test_schema3"
@@ -123,10 +151,10 @@ class SchemaTest < ActiveRecord::TestCase
 
   def test_schema_change_with_prepared_stmt
     altered = false
-    @connection.exec_query "select * from developers where id = $1", 'sql', [[nil, 1]]
+    @connection.exec_query "select * from developers where id = $1", 'sql', [bind_param(1)]
     @connection.exec_query "alter table developers add column zomg int", 'sql', []
     altered = true
-    @connection.exec_query "select * from developers where id = $1", 'sql', [[nil, 1]]
+    @connection.exec_query "select * from developers where id = $1", 'sql', [bind_param(1)]
   ensure
     # We are not using DROP COLUMN IF EXISTS because that syntax is only
     # supported by pg 9.X
@@ -305,14 +333,15 @@ class SchemaTest < ActiveRecord::TestCase
   end
 
   def test_pk_and_sequence_for_with_schema_specified
+    pg_name = ActiveRecord::ConnectionAdapters::PostgreSQL::Name
     [
       %("#{SCHEMA_NAME}"."#{PK_TABLE_NAME}"),
       %("#{SCHEMA_NAME}"."#{UNMATCHED_PK_TABLE_NAME}")
     ].each do |given|
       pk, seq = @connection.pk_and_sequence_for(given)
       assert_equal 'id', pk, "primary key should be found when table referenced as #{given}"
-      assert_equal "#{PK_TABLE_NAME}_id_seq", seq, "sequence name should be found when table referenced as #{given}" if given == %("#{SCHEMA_NAME}"."#{PK_TABLE_NAME}")
-      assert_equal "#{UNMATCHED_SEQUENCE_NAME}", seq, "sequence name should be found when table referenced as #{given}" if given ==  %("#{SCHEMA_NAME}"."#{UNMATCHED_PK_TABLE_NAME}")
+      assert_equal pg_name.new(SCHEMA_NAME, "#{PK_TABLE_NAME}_id_seq"), seq, "sequence name should be found when table referenced as #{given}" if given == %("#{SCHEMA_NAME}"."#{PK_TABLE_NAME}")
+      assert_equal pg_name.new(SCHEMA_NAME, UNMATCHED_SEQUENCE_NAME), seq, "sequence name should be found when table referenced as #{given}" if given ==  %("#{SCHEMA_NAME}"."#{UNMATCHED_PK_TABLE_NAME}")
     end
   end
 
@@ -352,6 +381,22 @@ class SchemaTest < ActiveRecord::TestCase
     end
   end
 
+  def test_reset_pk_sequence
+    sequence_name = "#{SCHEMA_NAME}.#{UNMATCHED_SEQUENCE_NAME}"
+    @connection.execute "SELECT setval('#{sequence_name}', 123)"
+    assert_equal "124", @connection.select_value("SELECT nextval('#{sequence_name}')")
+    @connection.reset_pk_sequence!("#{SCHEMA_NAME}.#{UNMATCHED_PK_TABLE_NAME}")
+    assert_equal "1", @connection.select_value("SELECT nextval('#{sequence_name}')")
+  end
+
+  def test_set_pk_sequence
+    table_name = "#{SCHEMA_NAME}.#{PK_TABLE_NAME}"
+    _, sequence_name = @connection.pk_and_sequence_for table_name
+    @connection.set_pk_sequence! table_name, 123
+    assert_equal "124", @connection.select_value("SELECT nextval('#{sequence_name}')")
+    @connection.reset_pk_sequence! table_name
+  end
+
   private
     def columns(table_name)
       @connection.send(:column_definitions, table_name).map do |name, type, default|
@@ -368,7 +413,7 @@ class SchemaTest < ActiveRecord::TestCase
 
     def do_dump_index_tests_for_schema(this_schema_name, first_index_column_name, second_index_column_name, third_index_column_name, fourth_index_column_name)
       with_schema_search_path(this_schema_name) do
-        indexes = @connection.indexes(TABLE_NAME).sort_by {|i| i.name}
+        indexes = @connection.indexes(TABLE_NAME).sort_by(&:name)
         assert_equal 4,indexes.size
 
         do_dump_index_assertions_for_one_index(indexes[0], INDEX_A_NAME, first_index_column_name)
@@ -390,4 +435,82 @@ class SchemaTest < ActiveRecord::TestCase
       assert_equal this_index_column, this_index.columns[0]
       assert_equal this_index_name, this_index.name
     end
+
+    def bind_param(value)
+      ActiveRecord::Relation::QueryAttribute.new(nil, value, ActiveRecord::Type::Value.new)
+    end
+end
+
+class SchemaForeignKeyTest < ActiveRecord::TestCase
+  include SchemaDumpingHelper
+
+  setup do
+    @connection = ActiveRecord::Base.connection
+  end
+
+  def test_dump_foreign_key_targeting_different_schema
+    @connection.create_schema "my_schema"
+    @connection.create_table "my_schema.trains" do |t|
+      t.string :name
+    end
+    @connection.create_table "wagons" do |t|
+      t.integer :train_id
+    end
+    @connection.add_foreign_key "wagons", "my_schema.trains", column: "train_id"
+    output = dump_table_schema "wagons"
+    assert_match %r{\s+add_foreign_key "wagons", "my_schema\.trains", column: "train_id"$}, output
+  ensure
+    @connection.drop_table "wagons", if_exists: true
+    @connection.drop_table "my_schema.trains", if_exists: true
+    @connection.execute "DROP SCHEMA IF EXISTS my_schema"
+  end
+end
+
+class DefaultsUsingMultipleSchemasAndDomainTest < ActiveSupport::TestCase
+  setup do
+    @connection = ActiveRecord::Base.connection
+    @connection.execute "DROP SCHEMA IF EXISTS schema_1 CASCADE"
+    @connection.execute "CREATE SCHEMA schema_1"
+    @connection.execute "CREATE DOMAIN schema_1.text AS text"
+    @connection.execute "CREATE DOMAIN schema_1.varchar AS varchar"
+    @connection.execute "CREATE DOMAIN schema_1.bpchar AS bpchar"
+
+    @old_search_path = @connection.schema_search_path
+    @connection.schema_search_path = "schema_1, pg_catalog"
+    @connection.create_table "defaults" do |t|
+      t.text "text_col", default: "some value"
+      t.string "string_col", default: "some value"
+    end
+    Default.reset_column_information
+  end
+
+  teardown do
+    @connection.schema_search_path = @old_search_path
+    @connection.execute "DROP SCHEMA IF EXISTS schema_1 CASCADE"
+    Default.reset_column_information
+  end
+
+  def test_text_defaults_in_new_schema_when_overriding_domain
+    assert_equal "some value", Default.new.text_col, "Default of text column was not correctly parsed"
+  end
+
+  def test_string_defaults_in_new_schema_when_overriding_domain
+    assert_equal "some value", Default.new.string_col, "Default of string column was not correctly parsed"
+  end
+
+  def test_bpchar_defaults_in_new_schema_when_overriding_domain
+    @connection.execute "ALTER TABLE defaults ADD bpchar_col bpchar DEFAULT 'some value'"
+    Default.reset_column_information
+    assert_equal "some value", Default.new.bpchar_col, "Default of bpchar column was not correctly parsed"
+  end
+
+  def test_text_defaults_after_updating_column_default
+    @connection.execute "ALTER TABLE defaults ALTER COLUMN text_col SET DEFAULT 'some text'::schema_1.text"
+    assert_equal "some text", Default.new.text_col, "Default of text column was not correctly parsed after updating default using '::text' since postgreSQL will add parens to the default in db"
+  end
+
+  def test_default_containing_quote_and_colons
+    @connection.execute "ALTER TABLE defaults ALTER COLUMN string_col SET DEFAULT 'foo''::bar'"
+    assert_equal "foo'::bar", Default.new.string_col
+  end
 end

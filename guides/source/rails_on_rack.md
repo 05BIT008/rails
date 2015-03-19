@@ -1,3 +1,5 @@
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+
 Rails on Rack
 =============
 
@@ -18,7 +20,7 @@ Introduction to Rack
 
 Rack provides a minimal, modular and adaptable interface for developing web applications in Ruby. By wrapping HTTP requests and responses in the simplest way possible, it unifies and distills the API for web servers, web frameworks, and software in between (the so-called middleware) into a single method call.
 
-- [Rack API Documentation](http://rack.rubyforge.org/doc/)
+* [Rack API Documentation](http://rack.github.io/)
 
 Explaining Rack is not really in the scope of this guide. In case you are not familiar with Rack's basics, you should check out the [Resources](#resources) section below.
 
@@ -61,7 +63,6 @@ Here's how it loads the middlewares:
 ```ruby
 def middleware
   middlewares = []
-  middlewares << [Rails::Rack::Debugger] if options[:debugger]
   middlewares << [::Rack::ContentLength]
   Hash.new(middlewares)
 end
@@ -99,6 +100,10 @@ To find out more about different `rackup` options:
 $ rackup --help
 ```
 
+### Development and auto-reloading
+
+Middlewares are loaded once and are not monitored for changes. You will have to restart the server for changes to be reflected in the running application.
+
 Action Dispatcher Middleware Stack
 ----------------------------------
 
@@ -111,7 +116,7 @@ NOTE: `ActionDispatch::MiddlewareStack` is Rails equivalent of `Rack::Builder`, 
 Rails has a handy rake task for inspecting the middleware stack in use:
 
 ```bash
-$ rake middleware
+$ bin/rake middleware
 ```
 
 For a freshly generated Rails application, this might produce something like:
@@ -194,7 +199,7 @@ And now if you inspect the middleware stack, you'll find that `Rack::Lock` is
 not a part of it.
 
 ```bash
-$ rake middleware
+$ bin/rake middleware
 (in /Users/lifo/Rails/blog)
 use ActionDispatch::Static
 use #<ActiveSupport::Cache::Strategy::LocalCache::Middleware:0x00000001c304c8>
@@ -229,7 +234,7 @@ Much of Action Controller's functionality is implemented as Middlewares. The fol
 
 **`ActionDispatch::Static`**
 
-* Used to serve static assets. Disabled if `config.serve_static_assets` is `false`.
+* Used to serve static files. Disabled if `config.serve_static_files` is `false`.
 
 **`Rack::Lock`**
 
@@ -249,7 +254,7 @@ Much of Action Controller's functionality is implemented as Middlewares. The fol
 
 **`ActionDispatch::RequestId`**
 
-* Makes a unique `X-Request-Id` header available to the response and enables the `ActionDispatch::Request#uuid` method.
+* Makes a unique `X-Request-Id` header available to the response and enables the `ActionDispatch::Request#request_id` method.
 
 **`Rails::Rack::Logger`**
 
@@ -273,7 +278,7 @@ Much of Action Controller's functionality is implemented as Middlewares. The fol
 
 **`ActionDispatch::Callbacks`**
 
-* Runs the prepare callbacks before serving the request.
+* Provides callbacks to be executed before and after dispatching the request.
 
 **`ActiveRecord::Migration::CheckPending`**
 
@@ -303,7 +308,7 @@ Much of Action Controller's functionality is implemented as Middlewares. The fol
 
 * Parses out parameters from the request into `params`.
 
-**`ActionDispatch::Head`**
+**`Rack::Head`**
 
 * Converts HEAD requests to `GET` requests and serves them as so.
 

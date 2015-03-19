@@ -1,11 +1,15 @@
 require 'date'
 require 'bigdecimal'
 require 'bigdecimal/util'
+require 'active_record/type'
 require 'active_support/core_ext/benchmark'
 require 'active_record/connection_adapters/schema_cache'
+require 'active_record/connection_adapters/sql_type_metadata'
 require 'active_record/connection_adapters/abstract/schema_dumper'
 require 'active_record/connection_adapters/abstract/schema_creation'
 require 'monitor'
+require 'arel/collectors/bind'
+require 'arel/collectors/sql_string'
 
 module ActiveRecord
   module ConnectionAdapters # :nodoc:
@@ -18,6 +22,7 @@ module ActiveRecord
       autoload :IndexDefinition
       autoload :ColumnDefinition
       autoload :ChangeColumnDefinition
+      autoload :ForeignKeyDefinition
       autoload :TableDefinition
       autoload :Table
       autoload :AlterTable
@@ -39,7 +44,8 @@ module ActiveRecord
     end
 
     autoload_at 'active_record/connection_adapters/abstract/transaction' do
-      autoload :ClosedTransaction
+      autoload :TransactionManager
+      autoload :NullTransaction
       autoload :RealTransaction
       autoload :SavepointTransaction
       autoload :TransactionState
@@ -59,6 +65,7 @@ module ActiveRecord
     # Most of the methods in the adapter are useful during migrations. Most
     # notably, the instance methods provided by SchemaStatement are very useful.
     class AbstractAdapter
+      ADAPTER_NAME = 'Abstract'.freeze
       include Quoting, DatabaseStatements, SchemaStatements
       include DatabaseLimits
       include QueryCache
@@ -90,6 +97,8 @@ module ActiveRecord
         end
       end
 
+      attr_reader :prepared_statements
+
       def initialize(connection, logger = nil, pool = nil) #:nodoc:
         super()
 
@@ -101,6 +110,27 @@ module ActiveRecord
         @schema_cache        = SchemaCache.new self
         @visitor             = nil
         @prepared_statements = false
+      end
+
+      class BindCollector < Arel::Collectors::Bind
+        def compile(bvs, conn)
+          casted_binds = conn.prepare_binds_for_database(bvs)
+          super(casted_binds.map { |value| conn.quote(value) })
+        end
+      end
+
+      class SQLString < Arel::Collectors::SQLString
+        def compile(bvs, conn)
+          super(bvs)
+        end
+      end
+
+      def collector
+        if prepared_statements
+          SQLString.new
+        else
+          BindCollector.new
+        end
       end
 
       def valid_type?(type)
@@ -128,22 +158,17 @@ module ActiveRecord
         @owner = nil
       end
 
-      def unprepared_visitor
-        self.class::BindSubstitution.new self
-      end
-
       def unprepared_statement
         old_prepared_statements, @prepared_statements = @prepared_statements, false
-        old_visitor, @visitor = @visitor, unprepared_visitor
         yield
       ensure
-        @visitor, @prepared_statements = old_visitor, old_prepared_statements
+        @prepared_statements = old_prepared_statements
       end
 
       # Returns the human-readable name of the adapter. Use mixed case - one
       # can always use downcase if needed.
       def adapter_name
-        'Abstract'
+        self.class::ADAPTER_NAME
       end
 
       # Does this adapter support migrations?
@@ -210,6 +235,21 @@ module ActiveRecord
         false
       end
 
+      # Does this adapter support creating foreign key constraints?
+      def supports_foreign_keys?
+        false
+      end
+
+      # Does this adapter support views?
+      def supports_views?
+        false
+      end
+
+      # Does this adapter support datetime with precision?
+      def supports_datetime_with_precision?
+        false
+      end
+
       # This is meant to be implemented by the adapters that support extensions
       def disable_extension(name)
       end
@@ -228,12 +268,10 @@ module ActiveRecord
         {}
       end
 
-      # QUOTING ==================================================
-
-      # Returns a bind substitution value given a bind +index+ and +column+
+      # Returns a bind substitution value given a bind +column+
       # NOTE: The column param is currently being used by the sqlserver-adapter
-      def substitute_at(column, index)
-        Arel::Nodes::BindParam.new '?'
+      def substitute_at(column, _unused = 0)
+        Arel::Nodes::BindParam.new
       end
 
       # REFERENTIAL INTEGRITY ====================================
@@ -305,34 +343,37 @@ module ActiveRecord
         @connection
       end
 
-      def open_transactions
-        @transaction.number
-      end
-
       def create_savepoint(name = nil)
-      end
-
-      def rollback_to_savepoint(name = nil)
       end
 
       def release_savepoint(name = nil)
       end
 
-      def case_sensitive_modifier(node)
+      def case_sensitive_modifier(node, table_attribute)
         node
       end
 
       def case_sensitive_comparison(table, attribute, column, value)
-        value = case_sensitive_modifier(value) unless value.nil?
-        table[attribute].eq(value)
+        table_attr = table[attribute]
+        value = case_sensitive_modifier(value, table_attr) unless value.nil?
+        table_attr.eq(value)
       end
 
       def case_insensitive_comparison(table, attribute, column, value)
-        table[attribute].lower.eq(table.lower(value))
+        if can_perform_case_insensitive_comparison_for?(column)
+          table[attribute].lower.eq(table.lower(value))
+        else
+          case_sensitive_comparison(table, attribute, column, value)
+        end
       end
 
+      def can_perform_case_insensitive_comparison_for?(column)
+        true
+      end
+      private :can_perform_case_insensitive_comparison_for?
+
       def current_savepoint_name
-        "active_record_#{open_transactions}"
+        current_transaction.savepoint_name
       end
 
       # Check the connection back in to the connection pool
@@ -340,11 +381,103 @@ module ActiveRecord
         pool.checkin self
       end
 
+      def type_map # :nodoc:
+        @type_map ||= Type::TypeMap.new.tap do |mapping|
+          initialize_type_map(mapping)
+        end
+      end
+
+      def new_column(name, default, sql_type_metadata = nil, null = true)
+        Column.new(name, default, sql_type_metadata, null)
+      end
+
+      def lookup_cast_type(sql_type) # :nodoc:
+        type_map.lookup(sql_type)
+      end
+
+      def column_name_for_operation(operation, node) # :nodoc:
+        visitor.accept(node, collector).value
+      end
+
       protected
 
+      def initialize_type_map(m) # :nodoc:
+        register_class_with_limit m, %r(boolean)i,       Type::Boolean
+        register_class_with_limit m, %r(char)i,          Type::String
+        register_class_with_limit m, %r(binary)i,        Type::Binary
+        register_class_with_limit m, %r(text)i,          Type::Text
+        register_class_with_precision m, %r(date)i,      Type::Date
+        register_class_with_precision m, %r(time)i,      Type::Time
+        register_class_with_precision m, %r(datetime)i,  Type::DateTime
+        register_class_with_limit m, %r(float)i,         Type::Float
+        register_class_with_limit m, %r(int)i,           Type::Integer
+
+        m.alias_type %r(blob)i,      'binary'
+        m.alias_type %r(clob)i,      'text'
+        m.alias_type %r(timestamp)i, 'datetime'
+        m.alias_type %r(numeric)i,   'decimal'
+        m.alias_type %r(number)i,    'decimal'
+        m.alias_type %r(double)i,    'float'
+
+        m.register_type(%r(decimal)i) do |sql_type|
+          scale = extract_scale(sql_type)
+          precision = extract_precision(sql_type)
+
+          if scale == 0
+            # FIXME: Remove this class as well
+            Type::DecimalWithoutScale.new(precision: precision)
+          else
+            Type::Decimal.new(precision: precision, scale: scale)
+          end
+        end
+      end
+
+      def reload_type_map # :nodoc:
+        type_map.clear
+        initialize_type_map(type_map)
+      end
+
+      def register_class_with_limit(mapping, key, klass) # :nodoc:
+        mapping.register_type(key) do |*args|
+          limit = extract_limit(args.last)
+          klass.new(limit: limit)
+        end
+      end
+
+      def register_class_with_precision(mapping, key, klass) # :nodoc:
+        mapping.register_type(key) do |*args|
+          precision = extract_precision(args.last)
+          klass.new(precision: precision)
+        end
+      end
+
+      def extract_scale(sql_type) # :nodoc:
+        case sql_type
+          when /\((\d+)\)/ then 0
+          when /\((\d+)(,(\d+))\)/ then $3.to_i
+        end
+      end
+
+      def extract_precision(sql_type) # :nodoc:
+        $1.to_i if sql_type =~ /\((\d+)(,\d+)?\)/
+      end
+
+      def extract_limit(sql_type) # :nodoc:
+        case sql_type
+        when /^bigint/i
+          8
+        when /\((.*)\)/
+          $1.to_i
+        end
+      end
+
       def translate_exception_class(e, sql)
-        message = "#{e.class.name}: #{e.message}: #{sql}"
-        @logger.error message if @logger
+        begin
+          message = "#{e.class.name}: #{e.message}: #{sql}"
+        rescue Encoding::CompatibilityError
+          message = "#{e.class.name}: #{e.message.force_encoding sql.encoding}: #{sql}"
+        end
+
         exception = translate_exception(e, message)
         exception.set_backtrace e.backtrace
         exception
@@ -368,7 +501,13 @@ module ActiveRecord
       end
 
       def without_prepared_statement?(binds)
-        !@prepared_statements || binds.empty?
+        !prepared_statements || binds.empty?
+      end
+
+      def column_for(table_name, column_name) # :nodoc:
+        column_name = column_name.to_s
+        columns(table_name).detect { |c| c.name == column_name } ||
+          raise(ActiveRecordError, "No such column: #{table_name}.#{column_name}")
       end
     end
   end

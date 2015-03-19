@@ -47,9 +47,8 @@ module ApplicationTests
         def; end
       RUBY
 
-      error_stream = Tempfile.new('error')
-      redirect_stderr(error_stream) { run_test_command('test/models/error_test.rb') }
-      assert_match "syntax error", error_stream.read
+      error = capture(:stderr) { run_test_command('test/models/error_test.rb') }
+      assert_match "syntax error", error
     end
 
     def test_run_models
@@ -109,6 +108,17 @@ module ApplicationTests
       end
     end
 
+    def test_run_jobs
+      create_test_file :jobs, 'foo_job'
+      create_test_file :jobs, 'bar_job'
+      create_test_file :models, 'foo'
+      run_test_jobs_command.tap do |output|
+        assert_match "FooJobTest", output
+        assert_match "BarJobTest", output
+        assert_match "2 runs, 2 assertions, 0 failures", output
+      end
+    end
+
     def test_run_functionals
       create_test_file :mailers, 'foo_mailer'
       create_test_file :controllers, 'bar_controller'
@@ -132,11 +142,11 @@ module ApplicationTests
     end
 
     def test_run_all_suites
-      suites = [:models, :helpers, :unit, :controllers, :mailers, :functional, :integration]
+      suites = [:models, :helpers, :unit, :controllers, :mailers, :functional, :integration, :jobs]
       suites.each { |suite| create_test_file suite, "foo_#{suite}" }
       run_test_command('') .tap do |output|
         suites.each { |suite| assert_match "Foo#{suite.to_s.camelize}Test", output }
-        assert_match "7 runs, 7 assertions, 0 failures", output
+        assert_match "8 runs, 8 assertions, 0 failures", output
       end
     end
 
@@ -245,7 +255,7 @@ module ApplicationTests
       def run_test_command(arguments = 'test/unit/test_test.rb')
         run_task ['test', arguments]
       end
-      %w{ mailers models helpers units controllers functionals integration }.each do |type|
+      %w{ mailers models helpers units controllers functionals integration jobs }.each do |type|
         define_method("run_test_#{type}_command") do
           run_task ["test:#{type}"]
         end
@@ -283,15 +293,6 @@ module ApplicationTests
 
       def create_schema
         app_file 'db/schema.rb', ''
-      end
-
-      def redirect_stderr(target_stream)
-        previous_stderr = STDERR.dup
-        $stderr.reopen(target_stream)
-        yield
-        target_stream.rewind
-      ensure
-        $stderr = previous_stderr
       end
 
       def create_test_file(path = :unit, name = 'test')

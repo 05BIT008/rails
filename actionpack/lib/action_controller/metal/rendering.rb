@@ -4,6 +4,17 @@ module ActionController
 
     RENDER_FORMATS_IN_PRIORITY = [:body, :text, :plain, :html]
 
+    module ClassMethods
+      # Documentation at ActionController::Renderer#render
+      delegate :render, to: :renderer
+
+      # Returns a renderer class (inherited from ActionController::Renderer)
+      # for the controller.
+      def renderer
+        @renderer ||= Renderer.for(self)
+      end
+    end
+
     # Before processing, set the request formats in current controller formats.
     def process_action(*) #:nodoc:
       self.formats = request.formats.map(&:ref).compact
@@ -67,8 +78,8 @@ module ActionController
         options[:html] = ERB::Util.html_escape(options[:html])
       end
 
-      if options.delete(:nothing) || _any_render_format_is_nil?(options)
-        options[:body] = " "
+      if options.delete(:nothing)
+        options[:body] = nil
       end
 
       if options[:status]
@@ -84,10 +95,6 @@ module ActionController
           options[format] = options[format].to_text
         end
       end
-    end
-
-    def _any_render_format_is_nil?(options)
-      RENDER_FORMATS_IN_PRIORITY.any? { |format| options.key?(format) && options[format].nil? }
     end
 
     # Process controller specific options, as status, content-type and location.

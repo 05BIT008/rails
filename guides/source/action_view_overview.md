@@ -1,3 +1,5 @@
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+
 Action View Overview
 ====================
 
@@ -7,7 +9,6 @@ After reading this guide, you will know:
 * How best to use templates, partials, and layouts.
 * What helpers are provided by Action View and how to make your own.
 * How to use localized views.
-* How to use Action View outside of Rails.
 
 --------------------------------------------------------------------------------
 
@@ -28,34 +29,34 @@ For each controller there is an associated directory in the `app/views` director
 Let's take a look at what Rails does by default when creating a new resource using the scaffold generator:
 
 ```bash
-$ rails generate scaffold post
+$ bin/rails generate scaffold article
       [...]
       invoke  scaffold_controller
-      create    app/controllers/posts_controller.rb
+      create    app/controllers/articles_controller.rb
       invoke    erb
-      create      app/views/posts
-      create      app/views/posts/index.html.erb
-      create      app/views/posts/edit.html.erb
-      create      app/views/posts/show.html.erb
-      create      app/views/posts/new.html.erb
-      create      app/views/posts/_form.html.erb
+      create      app/views/articles
+      create      app/views/articles/index.html.erb
+      create      app/views/articles/edit.html.erb
+      create      app/views/articles/show.html.erb
+      create      app/views/articles/new.html.erb
+      create      app/views/articles/_form.html.erb
       [...]
 ```
 
 There is a naming convention for views in Rails. Typically, the views share their name with the associated controller action, as you can see above.
-For example, the index controller action of the `posts_controller.rb` will use the `index.html.erb` view file in the `app/views/posts` directory.
-The complete HTML returned to the client is composed of a combination of this ERB file, a layout template that wraps it, and all the partials that the view may reference. Later on this guide you can find a more detailed documentation of each one of these three components.
+For example, the index controller action of the `articles_controller.rb` will use the `index.html.erb` view file in the `app/views/articles` directory.
+The complete HTML returned to the client is composed of a combination of this ERB file, a layout template that wraps it, and all the partials that the view may reference. Within this guide you will find more detailed documentation about each of these three components.
 
 
 Templates, Partials and Layouts
 -------------------------------
 
-As mentioned before, the final HTML output is a composition of three Rails elements: `Templates`, `Partials` and `Layouts`.
-Below is a brief overview of each one of them.
+As mentioned, the final HTML output is a composition of three Rails elements: `Templates`, `Partials` and `Layouts`.
+Below is a brief overview of each of them.
 
 ### Templates
 
-Action View templates can be written in several ways. If the template file has a `.erb` extension then it uses a mixture of ERB (included in Ruby) and HTML. If the template file has a `.builder` extension then a fresh instance of `Builder::XmlMarkup` library is used.
+Action View templates can be written in several ways. If the template file has a `.erb` extension then it uses a mixture of ERB (Embedded Ruby) and HTML. If the template file has a `.builder` extension then the `Builder::XmlMarkup` library is used.
 
 Rails supports multiple template systems and uses a file extension to distinguish amongst them. For example, an HTML file using the ERB template system will have `.html.erb` as a file extension.
 
@@ -72,7 +73,7 @@ Consider the following loop for names:
 <% end %>
 ```
 
-The loop is set up in regular embedding tags (`<% %>`) and the name is written using the output embedding tags (`<%= %>`). Note that this is not just a usage suggestion, for regular output functions like `print` or `puts` won't work with ERB templates. So this would be wrong:
+The loop is set up using regular embedding tags (`<% %>`) and the name is inserted using the output embedding tags (`<%= %>`). Note that this is not just a usage suggestion: regular output functions such as `print` and `puts` won't be rendered to the view with ERB templates. So this would be wrong:
 
 ```html+erb
 <%# WRONG %>
@@ -189,6 +190,22 @@ One way to use partials is to treat them as the equivalent of subroutines; a way
 
 Here, the `_ad_banner.html.erb` and `_footer.html.erb` partials could contain content that is shared among many pages in your application. You don't need to see the details of these sections when you're concentrating on a particular page.
 
+#### `render` without `partial` and `locals` options
+
+In the above example, `render` takes 2 options: `partial` and `locals`. But if
+these are the only options you want to pass, you can skip using these options.
+For example, instead of:
+
+```erb
+<%= render partial: "product", locals: {product: @product} %>
+```
+
+You can also do:
+
+```erb
+<%= render "product", product: @product %>
+```
+
 #### The `as` and `object` options
 
 By default `ActionView::Partials::PartialRenderer` has its object in a local variable with the same name as the template. So, given:
@@ -231,7 +248,7 @@ The `object` and `as` options can also be used together:
 
 #### Rendering Collections
 
-It is very common that a template needs to iterate over a collection and render a sub-template for each of the elements. This pattern has been implemented as a single method that accepts an array and renders a partial for each one of the elements in the array.
+It is very common that a template will need to iterate over a collection and render a sub-template for each of the elements. This pattern has been implemented as a single method that accepts an array and renders a partial for each one of the elements in the array.
 
 So this example for rendering all the products:
 
@@ -247,7 +264,7 @@ can be rewritten in a single line:
 <%= render partial: "product", collection: @products %>
 ```
 
-When a partial is called like this (eg. with a collection), the individual instances of the partial have access to the member of the collection being rendered via a variable named after the partial. In this case, the partial is `_product`, and within it you can refer to `product` to get the instance that is being rendered.
+When a partial is called with a collection, the individual instances of the partial have access to the member of the collection being rendered via a variable named after the partial. In this case, the partial is `_product`, and within it you can refer to `product` to get the collection member that is being rendered.
 
 You can use a shorthand syntax for rendering collections. Assuming `@products` is a collection of `Product` instances, you can simply write the following to produce the same result:
 
@@ -255,7 +272,7 @@ You can use a shorthand syntax for rendering collections. Assuming `@products` i
 <%= render @products %>
 ```
 
-Rails determines the name of the partial to use by looking at the model name in the collection, `Product` in this case. In fact, you can even create a heterogeneous collection and render it this way, and Rails will choose the proper partial for each member of the collection.
+Rails determines the name of the partial to use by looking at the model name in the collection, `Product` in this case. In fact, you can even render a collection made up of instances of different models using this shorthand, and Rails will choose the proper partial for each member of the collection.
 
 #### Spacer Templates
 
@@ -269,30 +286,30 @@ Rails will render the `_product_ruler` partial (with no data passed to it) betwe
 
 ### Layouts
 
-Layouts can be used to render a common view template around the results of Rails controller actions. Typically, every Rails application has a couple of overall layouts that most pages are rendered within. For example, a site might have a layout for a logged in user, and a layout for the marketing or sales side of the site. The logged in user layout might include top-level navigation that should be present across many controller actions. The sales layout for a SaaS app might include top-level navigation for things like "Pricing" and "Contact Us." You would expect each layout to have a different look and feel. You can read more details about Layouts in the [Layouts and Rendering in Rails](layouts_and_rendering.html) guide.
+Layouts can be used to render a common view template around the results of Rails controller actions. Typically, a Rails application will have a couple of layouts that pages will be rendered within. For example, a site might have one layout for a logged in user and another for the marketing or sales side of the site. The logged in user layout might include top-level navigation that should be present across many controller actions. The sales layout for a SaaS app might include top-level navigation for things like "Pricing" and "Contact Us" pages. You would expect each layout to have a different look and feel. You can read about layouts in more detail in the [Layouts and Rendering in Rails](layouts_and_rendering.html) guide.
 
 Partial Layouts
 ---------------
 
-Partials can have their own layouts applied to them. These layouts are different than the ones that are specified globally for the entire action, but they work in a similar fashion.
+Partials can have their own layouts applied to them. These layouts are different from those applied to a controller action, but they work in a similar fashion.
 
-Let's say we're displaying a post on a page, that should be wrapped in a `div` for display purposes. First, we'll create a new `Post`:
+Let's say we're displaying an article on a page which should be wrapped in a `div` for display purposes. Firstly, we'll create a new `Article`:
 
 ```ruby
-Post.create(body: 'Partial Layouts are cool!')
+Article.create(body: 'Partial Layouts are cool!')
 ```
 
-In the `show` template, we'll render the `_post` partial wrapped in the `box` layout:
+In the `show` template, we'll render the `_article` partial wrapped in the `box` layout:
 
-**posts/show.html.erb**
+**articles/show.html.erb**
 
 ```erb
-<%= render partial: 'post', layout: 'box', locals: {post: @post} %>
+<%= render partial: 'article', layout: 'box', locals: {article: @article} %>
 ```
 
-The `box` layout simply wraps the `_post` partial in a `div`:
+The `box` layout simply wraps the `_article` partial in a `div`:
 
-**posts/_box.html.erb**
+**articles/_box.html.erb**
 
 ```html+erb
 <div class='box'>
@@ -300,13 +317,13 @@ The `box` layout simply wraps the `_post` partial in a `div`:
 </div>
 ```
 
-The `_post` partial wraps the post's `body` in a `div` with the `id` of the post using the `div_for` helper:
+The `_article` partial wraps the article's `body` in a `div` with the `id` of the article using the `div_for` helper:
 
-**posts/_post.html.erb**
+**articles/_article.html.erb**
 
 ```html+erb
-<%= div_for(post) do %>
-  <p><%= post.body %></p>
+<%= div_for(article) do %>
+  <p><%= article.body %></p>
 <% end %>
 ```
 
@@ -314,22 +331,22 @@ this would output the following:
 
 ```html
 <div class='box'>
-  <div id='post_1'>
+  <div id='article_1'>
     <p>Partial Layouts are cool!</p>
   </div>
 </div>
 ```
 
-Note that the partial layout has access to the local `post` variable that was passed into the `render` call. However, unlike application-wide layouts, partial layouts still have the underscore prefix.
+Note that the partial layout has access to the local `article` variable that was passed into the `render` call. However, unlike application-wide layouts, partial layouts still have the underscore prefix.
 
-You can also render a block of code within a partial layout instead of calling `yield`. For example, if we didn't have the `_post` partial, we could do this instead:
+You can also render a block of code within a partial layout instead of calling `yield`. For example, if we didn't have the `_article` partial, we could do this instead:
 
-**posts/show.html.erb**
+**articles/show.html.erb**
 
 ```html+erb
-<% render(layout: 'box', locals: {post: @post}) do %>
-  <%= div_for(post) do %>
-    <p><%= post.body %></p>
+<% render(layout: 'box', locals: {article: @article}) do %>
+  <%= div_for(article) do %>
+    <p><%= article.body %></p>
   <% end %>
 <% end %>
 ```
@@ -347,83 +364,6 @@ Overview of helpers provided by Action View
 WIP: Not all the helpers are listed here. For a full list see the [API documentation](http://api.rubyonrails.org/classes/ActionView/Helpers.html)
 
 The following is only a brief overview summary of the helpers available in Action View. It's recommended that you review the [API Documentation](http://api.rubyonrails.org/classes/ActionView/Helpers.html), which covers all of the helpers in more detail, but this should serve as a good starting point.
-
-### RecordTagHelper
-
-This module provides methods for generating container tags, such as `div`, for your record. This is the recommended way of creating a container for render your Active Record object, as it adds an appropriate class and id attributes to that container. You can then refer to those containers easily by following the convention, instead of having to think about which class or id attribute you should use.
-
-#### content_tag_for
-
-Renders a container tag that relates to your Active Record Object.
-
-For example, given `@post` is the object of `Post` class, you can do:
-
-```html+erb
-<%= content_tag_for(:tr, @post) do %>
-  <td><%= @post.title %></td>
-<% end %>
-```
-
-This will generate this HTML output:
-
-```html
-<tr id="post_1234" class="post">
-  <td>Hello World!</td>
-</tr>
-```
-
-You can also supply HTML attributes as an additional option hash. For example:
-
-```html+erb
-<%= content_tag_for(:tr, @post, class: "frontpage") do %>
-  <td><%= @post.title %></td>
-<% end %>
-```
-
-Will generate this HTML output:
-
-```html
-<tr id="post_1234" class="post frontpage">
-  <td>Hello World!</td>
-</tr>
-```
-
-You can pass a collection of Active Record objects. This method will loop through your objects and create a container for each of them. For example, given `@posts` is an array of two `Post` objects:
-
-```html+erb
-<%= content_tag_for(:tr, @posts) do |post| %>
-  <td><%= post.title %></td>
-<% end %>
-```
-
-Will generate this HTML output:
-
-```html
-<tr id="post_1234" class="post">
-  <td>Hello World!</td>
-</tr>
-<tr id="post_1235" class="post">
-  <td>Ruby on Rails Rocks!</td>
-</tr>
-```
-
-#### div_for
-
-This is actually a convenient method which calls `content_tag_for` internally with `:div` as the tag name. You can pass either an Active Record object or a collection of objects. For example:
-
-```html+erb
-<%= div_for(@post, class: "frontpage") do %>
-  <td><%= @post.title %></td>
-<% end %>
-```
-
-Will generate this HTML output:
-
-```html
-<div id="post_1234" class="post frontpage">
-  <td>Hello World!</td>
-</div>
-```
 
 ### AssetTagHelper
 
@@ -495,7 +435,7 @@ image_url("edit.png") # => http://www.example.com/assets/edit.png
 
 #### image_tag
 
-Returns an html image tag for the source. The source can be a full path or a file that exists in your `app/assets/images` directory.
+Returns an HTML image tag for the source. The source can be a full path or a file that exists in your `app/assets/images` directory.
 
 ```ruby
 image_tag("icon.png") # => <img src="/assets/icon.png" alt="Icon" />
@@ -503,7 +443,7 @@ image_tag("icon.png") # => <img src="/assets/icon.png" alt="Icon" />
 
 #### javascript_include_tag
 
-Returns an html script tag for each of the sources provided. You can pass in the filename (`.js` extension is optional) of JavaScript files that exist in your `app/assets/javascripts` directory for inclusion into the current page or you can pass the full path relative to your document root.
+Returns an HTML script tag for each of the sources provided. You can pass in the filename (`.js` extension is optional) of JavaScript files that exist in your `app/assets/javascripts` directory for inclusion into the current page or you can pass the full path relative to your document root.
 
 ```ruby
 javascript_include_tag "common" # => <script src="/assets/common.js"></script>
@@ -590,14 +530,14 @@ This helper makes building an Atom feed easy. Here's a full usage example:
 **config/routes.rb**
 
 ```ruby
-resources :posts
+resources :articles
 ```
 
-**app/controllers/posts_controller.rb**
+**app/controllers/articles_controller.rb**
 
 ```ruby
 def index
-  @posts = Post.all
+  @articles = Article.all
 
   respond_to do |format|
     format.html
@@ -606,20 +546,20 @@ def index
 end
 ```
 
-**app/views/posts/index.atom.builder**
+**app/views/articles/index.atom.builder**
 
 ```ruby
 atom_feed do |feed|
-  feed.title("Posts Index")
-  feed.updated((@posts.first.created_at))
+  feed.title("Articles Index")
+  feed.updated((@articles.first.created_at))
 
-  @posts.each do |post|
-    feed.entry(post) do |entry|
-      entry.title(post.title)
-      entry.content(post.body, type: 'html')
+  @articles.each do |article|
+    feed.entry(article) do |entry|
+      entry.title(article.title)
+      entry.content(article.body, type: 'html')
 
       entry.author do |author|
-        author.name(post.author_name)
+        author.name(article.author_name)
       end
     end
   end
@@ -697,7 +637,7 @@ For example, let's say we have a standard application layout, but also a special
 </html>
 ```
 
-**app/views/posts/special.html.erb**
+**app/views/articles/special.html.erb**
 
 ```html+erb
 <p>This is a special page.</p>
@@ -714,7 +654,7 @@ For example, let's say we have a standard application layout, but also a special
 Returns a set of select tags (one for year, month, and day) pre-selected for accessing a specified date-based attribute.
 
 ```ruby
-date_select("post", "published_on")
+date_select("article", "published_on")
 ```
 
 #### datetime_select
@@ -722,7 +662,7 @@ date_select("post", "published_on")
 Returns a set of select tags (one for year, month, day, hour, and minute) pre-selected for accessing a specified datetime-based attribute.
 
 ```ruby
-datetime_select("post", "published_on")
+datetime_select("article", "published_on")
 ```
 
 #### distance_of_time_in_words
@@ -736,7 +676,7 @@ distance_of_time_in_words(Time.now, Time.now + 15.seconds, include_seconds: true
 
 #### select_date
 
-Returns a set of html select-tags (one for year, month, and day) pre-selected with the `date` provided.
+Returns a set of HTML select-tags (one for year, month, and day) pre-selected with the `date` provided.
 
 ```ruby
 # Generates a date select that defaults to the date provided (six days after today)
@@ -748,7 +688,7 @@ select_date()
 
 #### select_datetime
 
-Returns a set of html select-tags (one for year, month, day, hour, and minute) pre-selected with the `datetime` provided.
+Returns a set of HTML select-tags (one for year, month, day, hour, and minute) pre-selected with the `datetime` provided.
 
 ```ruby
 # Generates a datetime select that defaults to the datetime provided (four days after today)
@@ -808,7 +748,7 @@ select_second(Time.now + 16.minutes)
 
 #### select_time
 
-Returns a set of html select-tags (one for hour and minute).
+Returns a set of HTML select-tags (one for hour and minute).
 
 ```ruby
 # Generates a time select that defaults to the time provided
@@ -904,10 +844,10 @@ The params hash has a nested person value, which can therefore be accessed with 
 Returns a checkbox tag tailored for accessing a specified attribute.
 
 ```ruby
-# Let's say that @post.validated? is 1:
-check_box("post", "validated")
-# => <input type="checkbox" id="post_validated" name="post[validated]" value="1" />
-#    <input name="post[validated]" type="hidden" value="0" />
+# Let's say that @article.validated? is 1:
+check_box("article", "validated")
+# => <input type="checkbox" id="article_validated" name="article[validated]" value="1" />
+#    <input name="article[validated]" type="hidden" value="0" />
 ```
 
 #### fields_for
@@ -939,7 +879,7 @@ file_field(:user, :avatar)
 Creates a form and a scope around a specific model object that is used as a base for questioning about values for the fields.
 
 ```html+erb
-<%= form_for @post do |f| %>
+<%= form_for @article do |f| %>
   <%= f.label :title, 'Title' %>:
   <%= f.text_field :title %><br>
   <%= f.label :body, 'Body' %>:
@@ -961,8 +901,8 @@ hidden_field(:user, :token)
 Returns a label tag tailored for labelling an input field for a specified attribute.
 
 ```ruby
-label(:post, :title)
-# => <label for="post_title">Title</label>
+label(:article, :title)
+# => <label for="article_title">Title</label>
 ```
 
 #### password_field
@@ -979,11 +919,11 @@ password_field(:login, :pass)
 Returns a radio button tag for accessing a specified attribute.
 
 ```ruby
-# Let's say that @post.category returns "rails":
-radio_button("post", "category", "rails")
-radio_button("post", "category", "java")
-# => <input type="radio" id="post_category_rails" name="post[category]" value="rails" checked="checked" />
-#    <input type="radio" id="post_category_java" name="post[category]" value="java" />
+# Let's say that @article.category returns "rails":
+radio_button("article", "category", "rails")
+radio_button("article", "category", "java")
+# => <input type="radio" id="article_category_rails" name="article[category]" value="rails" checked="checked" />
+#    <input type="radio" id="article_category_java" name="article[category]" value="java" />
 ```
 
 #### text_area
@@ -1002,8 +942,8 @@ text_area(:comment, :text, size: "20x30")
 Returns an input tag of the "text" type tailored for accessing a specified attribute.
 
 ```ruby
-text_field(:post, :title)
-# => <input type="text" id="post_title" name="post[title]" value="#{@post.title}" />
+text_field(:article, :title)
+# => <input type="text" id="article_title" name="article[title]" value="#{@article.title}" />
 ```
 
 #### email_field
@@ -1035,28 +975,28 @@ Returns `select` and `option` tags for the collection of existing return values 
 Example object structure for use with this method:
 
 ```ruby
-class Post < ActiveRecord::Base
+class Article < ActiveRecord::Base
   belongs_to :author
 end
 
 class Author < ActiveRecord::Base
-  has_many :posts
+  has_many :articles
   def name_with_initial
     "#{first_name.first}. #{last_name}"
   end
 end
 ```
 
-Sample usage (selecting the associated Author for an instance of Post, `@post`):
+Sample usage (selecting the associated Author for an instance of Article, `@article`):
 
 ```ruby
-collection_select(:post, :author_id, Author.all, :id, :name_with_initial, {prompt: true})
+collection_select(:article, :author_id, Author.all, :id, :name_with_initial, {prompt: true})
 ```
 
-If `@post.author_id` is 1, this would return:
+If `@article.author_id` is 1, this would return:
 
 ```html
-<select name="post[author_id]">
+<select name="article[author_id]">
   <option value="">Please select</option>
   <option value="1" selected="selected">D. Heinemeier Hansson</option>
   <option value="2">D. Thomas</option>
@@ -1071,33 +1011,33 @@ Returns `radio_button` tags for the collection of existing return values of `met
 Example object structure for use with this method:
 
 ```ruby
-class Post < ActiveRecord::Base
+class Article < ActiveRecord::Base
   belongs_to :author
 end
 
 class Author < ActiveRecord::Base
-  has_many :posts
+  has_many :articles
   def name_with_initial
     "#{first_name.first}. #{last_name}"
   end
 end
 ```
 
-Sample usage (selecting the associated Author for an instance of Post, `@post`):
+Sample usage (selecting the associated Author for an instance of Article, `@article`):
 
 ```ruby
-collection_radio_buttons(:post, :author_id, Author.all, :id, :name_with_initial)
+collection_radio_buttons(:article, :author_id, Author.all, :id, :name_with_initial)
 ```
 
-If `@post.author_id` is 1, this would return:
+If `@article.author_id` is 1, this would return:
 
 ```html
-<input id="post_author_id_1" name="post[author_id]" type="radio" value="1" checked="checked" />
-<label for="post_author_id_1">D. Heinemeier Hansson</label>
-<input id="post_author_id_2" name="post[author_id]" type="radio" value="2" />
-<label for="post_author_id_2">D. Thomas</label>
-<input id="post_author_id_3" name="post[author_id]" type="radio" value="3" />
-<label for="post_author_id_3">M. Clark</label>
+<input id="article_author_id_1" name="article[author_id]" type="radio" value="1" checked="checked" />
+<label for="article_author_id_1">D. Heinemeier Hansson</label>
+<input id="article_author_id_2" name="article[author_id]" type="radio" value="2" />
+<label for="article_author_id_2">D. Thomas</label>
+<input id="article_author_id_3" name="article[author_id]" type="radio" value="3" />
+<label for="article_author_id_3">M. Clark</label>
 ```
 
 #### collection_check_boxes
@@ -1107,34 +1047,34 @@ Returns `check_box` tags for the collection of existing return values of `method
 Example object structure for use with this method:
 
 ```ruby
-class Post < ActiveRecord::Base
+class Article < ActiveRecord::Base
   has_and_belongs_to_many :authors
 end
 
 class Author < ActiveRecord::Base
-  has_and_belongs_to_many :posts
+  has_and_belongs_to_many :articles
   def name_with_initial
     "#{first_name.first}. #{last_name}"
   end
 end
 ```
 
-Sample usage (selecting the associated Authors for an instance of Post, `@post`):
+Sample usage (selecting the associated Authors for an instance of Article, `@article`):
 
 ```ruby
-collection_check_boxes(:post, :author_ids, Author.all, :id, :name_with_initial)
+collection_check_boxes(:article, :author_ids, Author.all, :id, :name_with_initial)
 ```
 
-If `@post.author_ids` is [1], this would return:
+If `@article.author_ids` is [1], this would return:
 
 ```html
-<input id="post_author_ids_1" name="post[author_ids][]" type="checkbox" value="1" checked="checked" />
-<label for="post_author_ids_1">D. Heinemeier Hansson</label>
-<input id="post_author_ids_2" name="post[author_ids][]" type="checkbox" value="2" />
-<label for="post_author_ids_2">D. Thomas</label>
-<input id="post_author_ids_3" name="post[author_ids][]" type="checkbox" value="3" />
-<label for="post_author_ids_3">M. Clark</label>
-<input name="post[author_ids][]" type="hidden" value="" />
+<input id="article_author_ids_1" name="article[author_ids][]" type="checkbox" value="1" checked="checked" />
+<label for="article_author_ids_1">D. Heinemeier Hansson</label>
+<input id="article_author_ids_2" name="article[author_ids][]" type="checkbox" value="2" />
+<label for="article_author_ids_2">D. Thomas</label>
+<input id="article_author_ids_3" name="article[author_ids][]" type="checkbox" value="3" />
+<label for="article_author_ids_3">M. Clark</label>
+<input name="article[author_ids][]" type="hidden" value="" />
 ```
 
 #### country_options_for_select
@@ -1222,13 +1162,13 @@ Create a select tag and a series of contained option tags for the provided objec
 Example:
 
 ```ruby
-select("post", "person_id", Person.all.collect {|p| [ p.name, p.id ] }, {include_blank: true})
+select("article", "person_id", Person.all.collect {|p| [ p.name, p.id ] }, {include_blank: true})
 ```
 
-If `@post.person_id` is 1, this would become:
+If `@article.person_id` is 1, this would become:
 
 ```html
-<select name="post[person_id]">
+<select name="article[person_id]">
   <option value=""></option>
   <option value="1" selected="selected">David</option>
   <option value="2">Sam</option>
@@ -1303,10 +1243,10 @@ file_field_tag 'attachment'
 Starts a form tag that points the action to an url configured with `url_for_options` just like `ActionController::Base#url_for`.
 
 ```html+erb
-<%= form_tag '/posts' do %>
+<%= form_tag '/articles' do %>
   <div><%= submit_tag 'Save' %></div>
 <% end %>
-# => <form action="/posts" method="post"><div><input type="submit" name="submit" value="Save" /></div></form>
+# => <form action="/articles" method="post"><div><input type="submit" name="submit" value="Save" /></div></form>
 ```
 
 #### hidden_field_tag
@@ -1368,8 +1308,8 @@ select_tag "people", "<option>David</option>"
 Creates a submit button with the text provided as the caption.
 
 ```ruby
-submit_tag "Publish this post"
-# => <input name="commit" type="submit" value="Publish this post" />
+submit_tag "Publish this article"
+# => <input name="commit" type="submit" value="Publish this article" />
 ```
 
 #### text_area_tag
@@ -1377,8 +1317,8 @@ submit_tag "Publish this post"
 Creates a text input area; use a textarea for longer text inputs such as blog posts or descriptions.
 
 ```ruby
-text_area_tag 'post'
-# => <textarea id="post" name="post"></textarea>
+text_area_tag 'article'
+# => <textarea id="article" name="article"></textarea>
 ```
 
 #### text_field_tag
@@ -1526,7 +1466,7 @@ The SanitizeHelper module provides a set of methods for scrubbing text of undesi
 
 #### sanitize
 
-This sanitize helper will html encode all tags and strip all attributes that aren't specifically allowed.
+This sanitize helper will HTML encode all tags and strip all attributes that aren't specifically allowed.
 
 ```ruby
 sanitize @article.body
@@ -1600,9 +1540,9 @@ details can be found in the [Rails Security Guide](security.html#cross-site-requ
 Localized Views
 ---------------
 
-Action View has the ability render different templates depending on the current locale.
+Action View has the ability to render different templates depending on the current locale.
 
-For example, suppose you have a `PostsController` with a show action. By default, calling this action will render `app/views/posts/show.html.erb`. But if you set `I18n.locale = :de`, then `app/views/posts/show.de.html.erb` will be rendered instead. If the localized template isn't present, the undecorated version will be used. This means you're not required to provide localized views for all cases, but they will be preferred and used if available.
+For example, suppose you have a `ArticlesController` with a show action. By default, calling this action will render `app/views/articles/show.html.erb`. But if you set `I18n.locale = :de`, then `app/views/articles/show.de.html.erb` will be rendered instead. If the localized template isn't present, the undecorated version will be used. This means you're not required to provide localized views for all cases, but they will be preferred and used if available.
 
 You can use the same technique to localize the rescue files in your public directory. For example, setting `I18n.locale = :de` and creating `public/500.de.html` and `public/404.de.html` would allow you to have localized rescue pages.
 
@@ -1616,6 +1556,6 @@ def set_expert_locale
 end
 ```
 
-Then you could create special views like `app/views/posts/show.expert.html.erb` that would only be displayed to expert users.
+Then you could create special views like `app/views/articles/show.expert.html.erb` that would only be displayed to expert users.
 
 You can read more about the Rails Internationalization (I18n) API [here](i18n.html).

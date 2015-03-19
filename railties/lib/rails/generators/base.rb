@@ -83,7 +83,7 @@ module Rails
       #
       # The first and last part used to find the generator to be invoked are
       # guessed based on class invokes hook_for, as noticed in the example above.
-      # This can be customized with two options: :base and :as.
+      # This can be customized with two options: :in and :as.
       #
       # Let's suppose you are creating a generator that needs to invoke the
       # controller generator from test unit. Your first attempt is:
@@ -108,7 +108,7 @@ module Rails
       #   "test_unit:controller", "test_unit"
       #
       # Similarly, if you want it to also lookup in the rails namespace, you just
-      # need to provide the :base value:
+      # need to provide the :in value:
       #
       #   class AwesomeGenerator < Rails::Generators::Base
       #     hook_for :test_framework, in: :rails, as: :controller
@@ -273,7 +273,7 @@ module Rails
 
         # Use Rails default banner.
         def self.banner
-          "rails generate #{namespace.sub(/^rails:/,'')} #{self.arguments.map{ |a| a.usage }.join(' ')} [options]".gsub(/\s+/, ' ')
+          "rails generate #{namespace.sub(/^rails:/,'')} #{self.arguments.map(&:usage).join(' ')} [options]".gsub(/\s+/, ' ')
         end
 
         # Sets the base_name taking into account the current class namespace.

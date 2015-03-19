@@ -11,11 +11,14 @@ module ActiveRecord::Associations::Builder
         end
 
         def join_table
-          @join_table ||= [@lhs_class.table_name, klass.table_name].sort.join("\0").gsub(/^(.*_)(.+)\0\1(.+)/, '\1\2_\3').gsub("\0", "_")
+          @join_table ||= [@lhs_class.table_name, klass.table_name].sort.join("\0").gsub(/^(.*[._])(.+)\0\1(.+)/, '\1\2_\3').tr("\0", "_")
         end
 
         private
-        def klass; @rhs_class_name.constantize; end
+
+        def klass
+          @lhs_class.send(:compute_type, @rhs_class_name)
+        end
       end
 
       def self.build(lhs_class, name, options)
@@ -60,13 +63,13 @@ module ActiveRecord::Associations::Builder
 
         def self.add_left_association(name, options)
           belongs_to name, options
-          self.left_reflection = reflect_on_association(name)
+          self.left_reflection = _reflect_on_association(name)
         end
 
         def self.add_right_association(name, options)
           rhs_name = name.to_s.singularize.to_sym
           belongs_to rhs_name, options
-          self.right_reflection = reflect_on_association(rhs_name)
+          self.right_reflection = _reflect_on_association(rhs_name)
         end
 
       }
@@ -84,18 +87,18 @@ module ActiveRecord::Associations::Builder
       middle_name = [lhs_model.name.downcase.pluralize,
                      association_name].join('_').gsub(/::/, '_').to_sym
       middle_options = middle_options join_model
-      hm_builder = HasMany.create_builder(lhs_model,
-                                          middle_name,
-                                          nil,
-                                          middle_options)
-      hm_builder.build lhs_model
+
+      HasMany.create_reflection(lhs_model,
+                                middle_name,
+                                nil,
+                                middle_options)
     end
 
     private
 
     def middle_options(join_model)
       middle_options = {}
-      middle_options[:class] = join_model
+      middle_options[:class_name] = "#{lhs_model.name}::#{join_model.name}"
       middle_options[:source] = join_model.left_reflection.name
       if options.key? :foreign_key
         middle_options[:foreign_key] = options[:foreign_key]
@@ -107,7 +110,7 @@ module ActiveRecord::Associations::Builder
       rhs_options = {}
 
       if options.key? :class_name
-        rhs_options[:foreign_key] = options[:class_name].foreign_key
+        rhs_options[:foreign_key] = options[:class_name].to_s.foreign_key
         rhs_options[:class_name] = options[:class_name]
       end
 

@@ -14,81 +14,81 @@ module ActionView
     #
     # * <tt>:include_blank</tt> - set to true or a prompt string if the first option element of the select element is a blank. Useful if there is not a default value required for the select element.
     #
-    #   select("post", "category", Post::CATEGORIES, {include_blank: true})
+    #     select("post", "category", Post::CATEGORIES, {include_blank: true})
     #
-    # could become:
+    #   could become:
     #
-    #   <select name="post[category]">
-    #     <option></option>
-    #     <option>joke</option>
-    #     <option>poem</option>
-    #   </select>
+    #     <select name="post[category]" id="post_category">
+    #       <option value=""></option>
+    #       <option value="joke">joke</option>
+    #       <option value="poem">poem</option>
+    #     </select>
     #
-    # Another common case is a select tag for a <tt>belongs_to</tt>-associated object.
+    #   Another common case is a select tag for a <tt>belongs_to</tt>-associated object.
     #
-    # Example with @post.person_id => 2:
+    #   Example with <tt>@post.person_id => 2</tt>:
     #
-    #   select("post", "person_id", Person.all.collect {|p| [ p.name, p.id ] }, {include_blank: 'None'})
+    #     select("post", "person_id", Person.all.collect {|p| [ p.name, p.id ] }, {include_blank: 'None'})
     #
-    # could become:
+    #   could become:
     #
-    #   <select name="post[person_id]">
-    #     <option value="">None</option>
-    #     <option value="1">David</option>
-    #     <option value="2" selected="selected">Sam</option>
-    #     <option value="3">Tobias</option>
-    #   </select>
+    #     <select name="post[person_id]" id="post_person_id">
+    #       <option value="">None</option>
+    #       <option value="1">David</option>
+    #       <option value="2" selected="selected">Sam</option>
+    #       <option value="3">Tobias</option>
+    #     </select>
     #
     # * <tt>:prompt</tt> - set to true or a prompt string. When the select element doesn't have a value yet, this prepends an option with a generic prompt -- "Please select" -- or the given prompt string.
     #
-    #   select("post", "person_id", Person.all.collect {|p| [ p.name, p.id ] }, {prompt: 'Select Person'})
+    #     select("post", "person_id", Person.all.collect {|p| [ p.name, p.id ] }, {prompt: 'Select Person'})
     #
-    # could become:
+    #   could become:
     #
-    #   <select name="post[person_id]">
-    #     <option value="">Select Person</option>
-    #     <option value="1">David</option>
-    #     <option value="2">Sam</option>
-    #     <option value="3">Tobias</option>
-    #   </select>
+    #     <select name="post[person_id]" id="post_person_id">
+    #       <option value="">Select Person</option>
+    #       <option value="1">David</option>
+    #       <option value="2">Sam</option>
+    #       <option value="3">Tobias</option>
+    #     </select>
     #
-    # Like the other form helpers, +select+ can accept an <tt>:index</tt> option to manually set the ID used in the resulting output. Unlike other helpers, +select+ expects this
-    # option to be in the +html_options+ parameter.
+    # * <tt>:index</tt> - like the other form helpers, +select+ can accept an <tt>:index</tt> option to manually set the ID used in the resulting output. Unlike other helpers, +select+ expects this
+    #   option to be in the +html_options+ parameter.
     #
-    #   select("album[]", "genre", %w[rap rock country], {}, { index: nil })
+    #     select("album[]", "genre", %w[rap rock country], {}, { index: nil })
     #
-    # becomes:
+    #   becomes:
     #
-    #   <select name="album[][genre]" id="album__genre">
-    #     <option value="rap">rap</option>
-    #     <option value="rock">rock</option>
-    #     <option value="country">country</option>
-    #   </select>
+    #     <select name="album[][genre]" id="album__genre">
+    #       <option value="rap">rap</option>
+    #       <option value="rock">rock</option>
+    #       <option value="country">country</option>
+    #     </select>
     #
     # * <tt>:disabled</tt> - can be a single value or an array of values that will be disabled options in the final output.
     #
-    #   select("post", "category", Post::CATEGORIES, {disabled: 'restricted'})
+    #     select("post", "category", Post::CATEGORIES, {disabled: 'restricted'})
     #
-    # could become:
+    #   could become:
     #
-    #   <select name="post[category]">
-    #     <option></option>
-    #     <option>joke</option>
-    #     <option>poem</option>
-    #     <option disabled="disabled">restricted</option>
-    #   </select>
+    #     <select name="post[category]" id="post_category">
+    #       <option value=""></option>
+    #       <option value="joke">joke</option>
+    #       <option value="poem">poem</option>
+    #       <option disabled="disabled" value="restricted">restricted</option>
+    #     </select>
     #
-    # When used with the <tt>collection_select</tt> helper, <tt>:disabled</tt> can also be a Proc that identifies those options that should be disabled.
+    #   When used with the <tt>collection_select</tt> helper, <tt>:disabled</tt> can also be a Proc that identifies those options that should be disabled.
     #
-    #   collection_select(:post, :category_id, Category.all, :id, :name, {disabled: lambda{|category| category.archived? }})
+    #     collection_select(:post, :category_id, Category.all, :id, :name, {disabled: lambda{|category| category.archived? }})
     #
-    # If the categories "2008 stuff" and "Christmas" return true when the method <tt>archived?</tt> is called, this would return:
-    #   <select name="post[category_id]">
-    #     <option value="1" disabled="disabled">2008 stuff</option>
-    #     <option value="2" disabled="disabled">Christmas</option>
-    #     <option value="3">Jokes</option>
-    #     <option value="4">Poems</option>
-    #   </select>
+    #   If the categories "2008 stuff" and "Christmas" return true when the method <tt>archived?</tt> is called, this would return:
+    #     <select name="post[category_id]" id="post_category_id">
+    #       <option value="1" disabled="disabled">2008 stuff</option>
+    #       <option value="2" disabled="disabled">Christmas</option>
+    #       <option value="3">Jokes</option>
+    #       <option value="4">Poems</option>
+    #     </select>
     #
     module FormOptionsHelper
       # ERB::Util can mask some helpers like textilize. Make sure to include them.
@@ -109,7 +109,7 @@ module ActionView
       #
       # would become:
       #
-      #   <select name="post[person_id]">
+      #   <select name="post[person_id]" id="post_person_id">
       #     <option value=""></option>
       #     <option value="1" selected="selected">David</option>
       #     <option value="2">Sam</option>
@@ -152,11 +152,9 @@ module ActionView
       # To prevent this the helper generates an auxiliary hidden field before
       # every multiple select. The hidden field has the same name as multiple select and blank value.
       #
-      # This way, the client either sends only the hidden field (representing
-      # the deselected multiple select box), or both fields. Since the HTML specification
-      # says key/value pairs have to be sent in the same order they appear in the
-      # form, and parameters extraction gets the last occurrence of any repeated
-      # key in the query string, that works for ordinary forms.
+      # <b>Note:</b> The client either sends only the hidden field (representing
+      # the deselected multiple select box), or both fields. This means that the resulting array
+      # always contains a blank string.
       #
       # In case if you don't want the helper to generate this hidden field you can specify
       # <tt>include_hidden: false</tt> option.
@@ -194,7 +192,7 @@ module ActionView
       #   collection_select(:post, :author_id, Author.all, :id, :name_with_initial, prompt: true)
       #
       # If <tt>@post.author_id</tt> is already <tt>1</tt>, this would return:
-      #   <select name="post[author_id]">
+      #   <select name="post[author_id]" id="post_author_id">
       #     <option value="">Please select</option>
       #     <option value="1" selected="selected">D. Heinemeier Hansson</option>
       #     <option value="2">D. Thomas</option>
@@ -245,7 +243,7 @@ module ActionView
       #
       # Possible output:
       #
-      #   <select name="city[country_id]">
+      #   <select name="city[country_id]" id="city_country_id">
       #     <optgroup label="Africa">
       #       <option value="1">South Africa</option>
       #       <option value="3">Somalia</option>
@@ -304,19 +302,19 @@ module ActionView
       #   # => <option value="DKK">Kroner</option>
       #
       #   options_for_select([ "VISA", "MasterCard" ], "MasterCard")
-      #   # => <option>VISA</option>
-      #   # => <option selected="selected">MasterCard</option>
+      #   # => <option value="VISA">VISA</option>
+      #   # => <option selected="selected" value="MasterCard">MasterCard</option>
       #
       #   options_for_select({ "Basic" => "$20", "Plus" => "$40" }, "$40")
       #   # => <option value="$20">Basic</option>
       #   # => <option value="$40" selected="selected">Plus</option>
       #
       #   options_for_select([ "VISA", "MasterCard", "Discover" ], ["VISA", "Discover"])
-      #   # => <option selected="selected">VISA</option>
-      #   # => <option>MasterCard</option>
-      #   # => <option selected="selected">Discover</option>
+      #   # => <option selected="selected" value="VISA">VISA</option>
+      #   # => <option value="MasterCard">MasterCard</option>
+      #   # => <option selected="selected" value="Discover">Discover</option>
       #
-      # You can optionally provide html attributes as the last element of the array.
+      # You can optionally provide HTML attributes as the last element of the array.
       #
       #   options_for_select([ "Denmark", ["USA", {class: 'bold'}], "Sweden" ], ["USA", "Sweden"])
       #   # => <option value="Denmark">Denmark</option>
@@ -353,12 +351,12 @@ module ActionView
         return container if String === container
 
         selected, disabled = extract_selected_and_disabled(selected).map do |r|
-          Array(r).map { |item| item.to_s }
+          Array(r).map(&:to_s)
         end
 
         container.map do |element|
           html_attributes = option_html_attributes(element)
-          text, value = option_text_and_value(element).map { |item| item.to_s }
+          text, value = option_text_and_value(element).map(&:to_s)
 
           html_attributes[:selected] ||= option_value_selected?(value, selected)
           html_attributes[:disabled] ||= disabled && option_value_selected?(value, disabled)
@@ -463,21 +461,7 @@ module ActionView
       end
 
       # Returns a string of <tt><option></tt> tags, like <tt>options_for_select</tt>, but
-      # wraps them with <tt><optgroup></tt> tags.
-      #
-      # Parameters:
-      # * +grouped_options+ - Accepts a nested array or hash of strings. The first value serves as the
-      #   <tt><optgroup></tt> label while the second value must be an array of options. The second value can be a
-      #   nested array of text-value pairs. See <tt>options_for_select</tt> for more info.
-      #    Ex. ["North America",[["United States","US"],["Canada","CA"]]]
-      # * +selected_key+ - A value equal to the +value+ attribute for one of the <tt><option></tt> tags,
-      #   which will have the +selected+ attribute set. Note: It is possible for this value to match multiple options
-      #   as you might have the same option in multiple groups. Each will then get <tt>selected="selected"</tt>.
-      #
-      # Options:
-      # * <tt>:prompt</tt> - set to true or a prompt string. When the select element doesn't have a value yet, this
-      #   prepends an option with a generic prompt - "Please select" - or the given prompt string.
-      # * <tt>:divider</tt> - the divider for the options groups.
+      # wraps them with <tt><optgroup></tt> tags:
       #
       #   grouped_options = [
       #    ['North America',
@@ -504,22 +488,36 @@ module ActionView
       #     <option value="France">France</option>
       #   </optgroup>
       #
-      #   grouped_options = [
-      #     [['United States','US'], 'Canada'],
-      #     ['Denmark','Germany','France']
-      #   ]
-      #   grouped_options_for_select(grouped_options, nil, divider: '---------')
+      # Parameters:
+      # * +grouped_options+ - Accepts a nested array or hash of strings. The first value serves as the
+      #   <tt><optgroup></tt> label while the second value must be an array of options. The second value can be a
+      #   nested array of text-value pairs. See <tt>options_for_select</tt> for more info.
+      #    Ex. ["North America",[["United States","US"],["Canada","CA"]]]
+      # * +selected_key+ - A value equal to the +value+ attribute for one of the <tt><option></tt> tags,
+      #   which will have the +selected+ attribute set. Note: It is possible for this value to match multiple options
+      #   as you might have the same option in multiple groups. Each will then get <tt>selected="selected"</tt>.
       #
-      # Possible output:
-      #   <optgroup label="---------">
-      #     <option value="US">United States</option>
-      #     <option value="Canada">Canada</option>
-      #   </optgroup>
-      #   <optgroup label="---------">
-      #     <option value="Denmark">Denmark</option>
-      #     <option value="Germany">Germany</option>
-      #     <option value="France">France</option>
-      #   </optgroup>
+      # Options:
+      # * <tt>:prompt</tt> - set to true or a prompt string. When the select element doesn't have a value yet, this
+      #   prepends an option with a generic prompt - "Please select" - or the given prompt string.
+      # * <tt>:divider</tt> - the divider for the options groups.
+      #
+      #     grouped_options = [
+      #       [['United States','US'], 'Canada'],
+      #       ['Denmark','Germany','France']
+      #     ]
+      #     grouped_options_for_select(grouped_options, nil, divider: '---------')
+      #
+      #   Possible output:
+      #     <optgroup label="---------">
+      #       <option value="US">United States</option>
+      #       <option value="Canada">Canada</option>
+      #     </optgroup>
+      #     <optgroup label="---------">
+      #       <option value="Denmark">Denmark</option>
+      #       <option value="Germany">Germany</option>
+      #       <option value="France">France</option>
+      #     </optgroup>
       #
       # <b>Note:</b> Only the <tt><optgroup></tt> and <tt><option></tt> tags are returned, so you still have to
       # wrap the output in an appropriate <tt><select></tt> tag.
@@ -635,7 +633,7 @@ module ActionView
       # even use the label as wrapper, as in the example above.
       #
       # The builder methods <tt>label</tt> and <tt>radio_button</tt> also accept
-      # extra html options:
+      # extra HTML options:
       #   collection_radio_buttons(:post, :author_id, Author.all, :id, :name_with_initial) do |b|
       #     b.label(class: "radio_button") { b.radio_button(class: "radio_button") }
       #   end
@@ -698,7 +696,7 @@ module ActionView
       # use the label as wrapper, as in the example above.
       #
       # The builder methods <tt>label</tt> and <tt>check_box</tt> also accept
-      # extra html options:
+      # extra HTML options:
       #   collection_check_boxes(:post, :author_ids, Author.all, :id, :name_with_initial) do |b|
       #     b.label(class: "check_box") { b.check_box(class: "check_box") }
       #   end

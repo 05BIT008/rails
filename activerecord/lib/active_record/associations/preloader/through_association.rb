@@ -63,7 +63,7 @@ module ActiveRecord
           should_reset = (through_scope != through_reflection.klass.unscoped) ||
              (reflection.options[:source_type] && through_reflection.collection?)
 
-          # Dont cache the association - we would only be caching a subset
+          # Don't cache the association - we would only be caching a subset
           if should_reset
             owners.each { |owner|
               owner.association(association_name).reset
@@ -78,13 +78,13 @@ module ActiveRecord
           if options[:source_type]
             scope.where! reflection.foreign_type => options[:source_type]
           else
-            unless reflection_scope.where_values.empty?
+            unless reflection_scope.where_clause.empty?
               scope.includes_values = Array(reflection_scope.values[:includes] || options[:source])
-              scope.where_values    = reflection_scope.values[:where]
+              scope.where_clause = reflection_scope.where_clause
             end
 
             scope.references! reflection_scope.values[:references]
-            scope.order! reflection_scope.values[:order] if scope.eager_loading?
+            scope = scope.order reflection_scope.values[:order] if scope.eager_loading?
           end
 
           scope

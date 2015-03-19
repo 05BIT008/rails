@@ -1,3 +1,5 @@
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+
 Ruby on Rails 4.1 Release Notes
 ===============================
 
@@ -8,10 +10,10 @@ Highlights in Rails 4.1:
 * Action Pack variants
 * Action Mailer previews
 
-These release notes cover only the major changes. To know about various bug
-fixes and changes, please refer to the change logs or check out the
-[list of commits](https://github.com/rails/rails/commits/master) in the main
-Rails repository on GitHub.
+These release notes cover only the major changes. To learn about various bug
+fixes and changes, please refer to the change logs or check out the [list of
+commits](https://github.com/rails/rails/commits/4-1-stable) in the main Rails
+repository on GitHub.
 
 --------------------------------------------------------------------------------
 
@@ -136,7 +138,7 @@ end
 
 ### Action Mailer Previews
 
-Action Mailer previews provide a way to visually see how emails look by visiting
+Action Mailer previews provide a way to see how emails look by visiting
 a special URL that renders them.
 
 You implement a preview class whose methods return the mail object you'd like
@@ -157,7 +159,7 @@ By default, these preview classes live in `test/mailers/previews`.
 This can be configured using the `preview_path` option.
 
 See its
-[documentation](http://api.rubyonrails.org/v4.1.0/classes/ActionMailer/Base.html)
+[documentation](http://api.rubyonrails.org/v4.1.0/classes/ActionMailer/Base.html#class-ActionMailer::Base-label-Previewing+emails)
 for a detailed write up.
 
 ### Active Record enums
@@ -315,15 +317,15 @@ for detailed changes.
 
 * Removed deprecated constants from Action Controller:
 
-  | Removed                            | Successor                       |
-  |:-----------------------------------|:--------------------------------|
-  | ActionController::AbstractRequest  | ActionDispatch::Request         |
-  | ActionController::Request          | ActionDispatch::Request         |
-  | ActionController::AbstractResponse | ActionDispatch::Response        |
-  | ActionController::Response         | ActionDispatch::Response        |
-  | ActionController::Routing          | ActionDispatch::Routing         |
-  | ActionController::Integration      | ActionDispatch::Integration     |
-  | ActionController::IntegrationTest  | ActionDispatch::IntegrationTest |
+| Removed                            | Successor                       |
+|:-----------------------------------|:--------------------------------|
+| ActionController::AbstractRequest  | ActionDispatch::Request         |
+| ActionController::Request          | ActionDispatch::Request         |
+| ActionController::AbstractResponse | ActionDispatch::Response        |
+| ActionController::Response         | ActionDispatch::Response        |
+| ActionController::Routing          | ActionDispatch::Routing         |
+| ActionController::Integration      | ActionDispatch::Integration     |
+| ActionController::IntegrationTest  | ActionDispatch::IntegrationTest |
 
 ### Notable changes
 

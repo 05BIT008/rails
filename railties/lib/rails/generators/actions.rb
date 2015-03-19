@@ -1,5 +1,4 @@
 require 'open-uri'
-require 'rbconfig'
 
 module Rails
   module Generators
@@ -7,6 +6,7 @@ module Rails
       def initialize(*) # :nodoc:
         super
         @in_group = nil
+        @after_bundle_callbacks = []
       end
 
       # Adds an entry into +Gemfile+ for the supplied gem.
@@ -20,9 +20,9 @@ module Rails
 
         # Set the message to be shown in logs. Uses the git repo if one is given,
         # otherwise use name (version).
-        parts, message = [ name.inspect ], name
+        parts, message = [ quote(name) ], name
         if version ||= options.delete(:version)
-          parts   << version.inspect
+          parts   << quote(version)
           message << " (#{version})"
         end
         message = options[:git] if options[:git]
@@ -30,7 +30,7 @@ module Rails
         log :gemfile, message
 
         options.each do |option, value|
-          parts << "#{option}: #{value.inspect}"
+          parts << "#{option}: #{quote(value)}"
         end
 
         in_root do
@@ -68,7 +68,7 @@ module Rails
         log :source, source
 
         in_root do
-          prepend_file "Gemfile", "source #{source.inspect}\n", verbose: false
+          prepend_file "Gemfile", "source #{quote(source)}\n", verbose: false
         end
       end
 
@@ -84,10 +84,10 @@ module Rails
       #   environment(nil, env: "development") do
       #     "config.autoload_paths += %W(#{config.root}/extras)"
       #   end
-      def environment(data=nil, options={}, &block)
+      def environment(data=nil, options={})
         sentinel = /class [a-z_:]+ < Rails::Application/i
         env_file_sentinel = /Rails\.application\.configure do/
-        data = block.call if !data && block_given?
+        data = yield if !data && block_given?
 
         in_root do
           if options[:env].nil?
@@ -188,7 +188,7 @@ module Rails
       #   generate(:authenticated, "user session")
       def generate(what, *args)
         log :generate, what
-        argument = args.flat_map {|arg| arg.to_s }.join(" ")
+        argument = args.flat_map(&:to_s).join(" ")
 
         in_root { run_ruby_script("bin/rails generate #{what} #{argument}", verbose: false) }
       end
@@ -218,10 +218,10 @@ module Rails
       #   route "root 'welcome#index'"
       def route(routing_code)
         log :route, routing_code
-        sentinel = /\.routes\.draw do\s*$/
+        sentinel = /\.routes\.draw do\s*\n/m
 
         in_root do
-          inject_into_file 'config/routes.rb', "\n  #{routing_code}", { after: sentinel, verbose: false }
+          inject_into_file 'config/routes.rb', "  #{routing_code}", { after: sentinel, verbose: false, force: true }
         end
       end
 
@@ -230,6 +230,16 @@ module Rails
       #   readme "README"
       def readme(path)
         log File.read(find_in_source_paths(path))
+      end
+
+      # Registers a callback to be executed after bundle and spring binstubs
+      # have run.
+      #
+      #   after_bundle do
+      #     git add: '.'
+      #   end
+      def after_bundle(&block)
+        @after_bundle_callbacks << block
       end
 
       protected
@@ -255,6 +265,17 @@ module Rails
           end
         end
 
+        # Surround string with single quotes if there is no quotes.
+        # Otherwise fall back to double quotes
+        def quote(value)
+          return value.inspect unless value.is_a? String
+
+          if value.include?("'")
+            value.inspect
+          else
+            "'#{value}'"
+          end
+        end
     end
   end
 end

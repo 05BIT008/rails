@@ -138,7 +138,7 @@ module ActionView
     # resolver is fresher before returning it.
     def cached(key, path_info, details, locals) #:nodoc:
       name, prefix, partial = path_info
-      locals = locals.map { |x| x.to_s }.sort!
+      locals = locals.map(&:to_s).sort!
 
       if key
         @cache.cache(key, name, prefix, partial, locals) do
@@ -181,13 +181,7 @@ module ActionView
     def query(path, details, formats)
       query = build_query(path, details)
 
-      # deals with case-insensitive file systems.
-      sanitizer = Hash.new { |h,dir| h[dir] = Dir["#{dir}/*"] }
-
-      template_paths = Dir[query].reject { |filename|
-        File.directory?(filename) ||
-          !sanitizer[File.dirname(filename)].include?(filename)
-      }
+      template_paths = find_template_paths query
 
       template_paths.map { |template|
         handler, format, variant = extract_handler_and_format_and_variant(template, formats)
@@ -199,6 +193,14 @@ module ActionView
           :variant      => variant,
           :updated_at   => mtime(template)
         )
+      }
+    end
+
+    def find_template_paths(query)
+      Dir[query].reject { |filename|
+        File.directory?(filename) ||
+          # deals with case-insensitive file systems.
+          !File.fnmatch(query, filename, File::FNM_EXTGLOB)
       }
     end
 
@@ -228,7 +230,7 @@ module ActionView
       File.mtime(p)
     end
 
-    # Extract handler and formats from path. If a format cannot be a found neither
+    # Extract handler, formats and variant from path. If a format cannot be found neither
     # from the path, or the handler, we should return the array of formats given
     # to the resolver.
     def extract_handler_and_format_and_variant(path, default_formats)
@@ -236,11 +238,6 @@ module ActionView
       pieces.shift
 
       extension = pieces.pop
-      unless extension
-        message = "The file #{path} did not specify a template handler. The default is currently ERB, " \
-                  "but will change to RAW in the future."
-        ActiveSupport::Deprecation.warn message
-      end
 
       handler = Template.handler_for_extension(extension)
       format, variant = pieces.last.split(EXTENSIONS[:variants], 2) if pieces.last
@@ -258,13 +255,13 @@ module ActionView
   # Default pattern, loads views the same way as previous versions of rails, eg. when you're
   # looking for `users/new` it will produce query glob: `users/new{.{en},}{.{html,js},}{.{erb,haml},}`
   #
-  #   FileSystemResolver.new("/path/to/views", ":prefix/:action{.:locale,}{.:formats,}{.:handlers,}")
+  #   FileSystemResolver.new("/path/to/views", ":prefix/:action{.:locale,}{.:formats,}{+:variants,}{.:handlers,}")
   #
   # This one allows you to keep files with different formats in separate subdirectories,
   # eg. `users/new.html` will be loaded from `users/html/new.erb` or `users/new.html.erb`,
   # `users/new.js` from `users/js/new.erb` or `users/new.js.erb`, etc.
   #
-  #   FileSystemResolver.new("/path/to/views", ":prefix/{:formats/,}:action{.:locale,}{.:formats,}{.:handlers,}")
+  #   FileSystemResolver.new("/path/to/views", ":prefix/{:formats/,}:action{.:locale,}{.:formats,}{+:variants,}{.:handlers,}")
   #
   # If you don't specify a pattern then the default will be used.
   #
@@ -273,7 +270,7 @@ module ActionView
   #
   #   ActionController::Base.view_paths = FileSystemResolver.new(
   #     Rails.root.join("app/views"),
-  #     ":prefix{/:locale}/:action{.:formats,}{.:handlers,}"
+  #     ":prefix{/:locale}/:action{.:formats,}{+:variants,}{.:handlers,}"
   #   )
   #
   # ==== Pattern format and variables
@@ -285,6 +282,7 @@ module ActionView
   # * <tt>:action</tt> - name of the action
   # * <tt>:locale</tt> - possible locale versions
   # * <tt>:formats</tt> - possible request formats (for example html, json, xml...)
+  # * <tt>:variants</tt> - possible request variants (for example phone, tablet...)
   # * <tt>:handlers</tt> - possible handlers (for example erb, haml, builder...)
   #
   class FileSystemResolver < PathResolver

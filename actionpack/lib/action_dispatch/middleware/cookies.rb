@@ -3,6 +3,7 @@ require 'active_support/core_ext/module/attribute_accessors'
 require 'active_support/core_ext/object/blank'
 require 'active_support/key_generator'
 require 'active_support/message_verifier'
+require 'active_support/json'
 
 module ActionDispatch
   class Request < Rack::Request
@@ -70,11 +71,13 @@ module ActionDispatch
   #   restrict to the domain level. If you use a schema like www.example.com
   #   and want to share session with user.example.com set <tt>:domain</tt>
   #   to <tt>:all</tt>. Make sure to specify the <tt>:domain</tt> option with
-  #   <tt>:all</tt> again when deleting cookies.
+  #   <tt>:all</tt> or <tt>Array</tt> again when deleting cookies.
   #
-  #     domain: nil  # Does not sets cookie domain. (default)
+  #     domain: nil  # Does not set cookie domain. (default)
   #     domain: :all # Allow the cookie for the top most level
   #                  # domain and subdomains.
+  #     domain: %w(.example.com .example.org) # Allow the cookie
+  #                                           # for concrete domain names.
   #
   # * <tt>:expires</tt> - The time at which this cookie expires, as a \Time object.
   # * <tt>:secure</tt> - Whether this cookie is only transmitted to HTTPS servers.
@@ -90,6 +93,7 @@ module ActionDispatch
     SECRET_TOKEN = "action_dispatch.secret_token".freeze
     SECRET_KEY_BASE = "action_dispatch.secret_key_base".freeze
     COOKIES_SERIALIZER = "action_dispatch.cookies_serializer".freeze
+    COOKIES_DIGEST = "action_dispatch.cookies_digest".freeze
 
     # Cookies can typically store 4096 bytes.
     MAX_COOKIE_SIZE = 4096
@@ -118,7 +122,7 @@ module ActionDispatch
       # the cookie again. This is useful for creating cookies with values that the user is not supposed to change. If a signed
       # cookie was tampered with by the user (or a 3rd party), nil will be returned.
       #
-      # If +secrets.secret_key_base+ and +config.secret_token+ (deprecated) are both set,
+      # If +secrets.secret_key_base+ and +secrets.secret_token+ (deprecated) are both set,
       # legacy cookies signed with the old key generator will be transparently upgraded.
       #
       # This jar requires that you set a suitable secret for the verification on your app's +secrets.secret_key_base+.
@@ -141,7 +145,7 @@ module ActionDispatch
       # Returns a jar that'll automatically encrypt cookie values before sending them to the client and will decrypt them for read.
       # If the cookie was tampered with by the user (or a 3rd party), nil will be returned.
       #
-      # If +secrets.secret_key_base+ and +config.secret_token+ (deprecated) are both set,
+      # If +secrets.secret_key_base+ and +secrets.secret_token+ (deprecated) are both set,
       # legacy cookies signed with the old key generator will be transparently upgraded.
       #
       # This jar requires that you set a suitable secret for the verification on your app's +secrets.secret_key_base+.
@@ -173,14 +177,18 @@ module ActionDispatch
       end
     end
 
+    # Passing the ActiveSupport::MessageEncryptor::NullSerializer downstream
+    # to the Message{Encryptor,Verifier} allows us to handle the
+    # (de)serialization step within the cookie jar, which gives us the
+    # opportunity to detect and migrate legacy cookies.
     module VerifyAndUpgradeLegacySignedMessage
       def initialize(*args)
         super
-        @legacy_verifier = ActiveSupport::MessageVerifier.new(@options[:secret_token])
+        @legacy_verifier = ActiveSupport::MessageVerifier.new(@options[:secret_token], serializer: ActiveSupport::MessageEncryptor::NullSerializer)
       end
 
       def verify_and_upgrade_legacy_signed_message(name, signed_message)
-        @legacy_verifier.verify(signed_message).tap do |value|
+        deserialize(name, @legacy_verifier.verify(signed_message)).tap do |value|
           self[name] = { value: value }
         end
       rescue ActiveSupport::MessageVerifier::InvalidSignature
@@ -212,7 +220,8 @@ module ActionDispatch
           secret_token: env[SECRET_TOKEN],
           secret_key_base: env[SECRET_KEY_BASE],
           upgrade_legacy_signed_cookies: env[SECRET_TOKEN].present? && env[SECRET_KEY_BASE].present?,
-          serializer: env[COOKIES_SERIALIZER]
+          serializer: env[COOKIES_SERIALIZER],
+          digest: env[COOKIES_DIGEST]
         }
       end
 
@@ -274,7 +283,7 @@ module ActionDispatch
       def handle_options(options) #:nodoc:
         options[:path] ||= "/"
 
-        if options[:domain] == :all
+        if options[:domain] == :all || options[:domain] == 'all'
           # if there is a provided tld length then we use it otherwise default domain regexp
           domain_regexp = options[:tld_length] ? /([^.]+\.?){#{options[:tld_length]}}$/ : DOMAIN_REGEXP
 
@@ -289,8 +298,8 @@ module ActionDispatch
         end
       end
 
-      # Sets the cookie named +name+. The second argument may be the very cookie
-      # value, or a hash of options as documented above.
+      # Sets the cookie named +name+. The second argument may be the cookie's
+      # value or a hash of options as documented above.
       def []=(name, options)
         if options.is_a?(Hash)
           options.symbolize_keys!
@@ -385,24 +394,11 @@ module ActionDispatch
 
     class JsonSerializer
       def self.load(value)
-        JSON.parse(value, quirks_mode: true)
+        ActiveSupport::JSON.decode(value)
       end
 
       def self.dump(value)
-        JSON.generate(value, quirks_mode: true)
-      end
-    end
-
-    # Passing the NullSerializer downstream to the Message{Encryptor,Verifier}
-    # allows us to handle the (de)serialization step within the cookie jar,
-    # which gives us the opportunity to detect and migrate legacy cookies.
-    class NullSerializer
-      def self.load(value)
-        value
-      end
-
-      def self.dump(value)
-        value
+        ActiveSupport::JSON.encode(value)
       end
     end
 
@@ -414,7 +410,7 @@ module ActionDispatch
           @options[:serializer] == :hybrid && value.start_with?(MARSHAL_SIGNATURE)
         end
 
-        def serialize(name, value)
+        def serialize(value)
           serializer.dump(value)
         end
 
@@ -441,6 +437,10 @@ module ActionDispatch
             serializer
           end
         end
+
+        def digest
+          @options[:digest] || 'SHA1'
+        end
     end
 
     class SignedCookieJar #:nodoc:
@@ -451,7 +451,7 @@ module ActionDispatch
         @parent_jar = parent_jar
         @options = options
         secret = key_generator.generate_key(@options[:signed_cookie_salt])
-        @verifier = ActiveSupport::MessageVerifier.new(secret, serializer: NullSerializer)
+        @verifier = ActiveSupport::MessageVerifier.new(secret, digest: digest, serializer: ActiveSupport::MessageEncryptor::NullSerializer)
       end
 
       def [](name)
@@ -463,12 +463,12 @@ module ActionDispatch
       def []=(name, options)
         if options.is_a?(Hash)
           options.symbolize_keys!
-          options[:value] = @verifier.generate(serialize(name, options[:value]))
+          options[:value] = @verifier.generate(serialize(options[:value]))
         else
-          options = { :value => @verifier.generate(serialize(name, options)) }
+          options = { :value => @verifier.generate(serialize(options)) }
         end
 
-        raise CookieOverflow if options[:value].size > MAX_COOKIE_SIZE
+        raise CookieOverflow if options[:value].bytesize > MAX_COOKIE_SIZE
         @parent_jar[name] = options
       end
 
@@ -481,7 +481,7 @@ module ActionDispatch
     end
 
     # UpgradeLegacySignedCookieJar is used instead of SignedCookieJar if
-    # config.secret_token and secrets.secret_key_base are both set. It reads
+    # secrets.secret_token and secrets.secret_key_base are both set. It reads
     # legacy cookies signed with the old dummy key generator and re-saves
     # them using the new key generator to provide a smooth upgrade path.
     class UpgradeLegacySignedCookieJar < SignedCookieJar #:nodoc:
@@ -508,7 +508,7 @@ module ActionDispatch
         @options = options
         secret = key_generator.generate_key(@options[:encrypted_cookie_salt])
         sign_secret = key_generator.generate_key(@options[:encrypted_signed_cookie_salt])
-        @encryptor = ActiveSupport::MessageEncryptor.new(secret, sign_secret, serializer: NullSerializer)
+        @encryptor = ActiveSupport::MessageEncryptor.new(secret, sign_secret, digest: digest, serializer: ActiveSupport::MessageEncryptor::NullSerializer)
       end
 
       def [](name)
@@ -524,9 +524,9 @@ module ActionDispatch
           options = { :value => options }
         end
 
-        options[:value] = @encryptor.encrypt_and_sign(serialize(name, options[:value]))
+        options[:value] = @encryptor.encrypt_and_sign(serialize(options[:value]))
 
-        raise CookieOverflow if options[:value].size > MAX_COOKIE_SIZE
+        raise CookieOverflow if options[:value].bytesize > MAX_COOKIE_SIZE
         @parent_jar[name] = options
       end
 
@@ -539,7 +539,7 @@ module ActionDispatch
     end
 
     # UpgradeLegacyEncryptedCookieJar is used by ActionDispatch::Session::CookieStore
-    # instead of EncryptedCookieJar if config.secret_token and secrets.secret_key_base
+    # instead of EncryptedCookieJar if secrets.secret_token and secrets.secret_key_base
     # are both set. It reads legacy cookies signed with the old dummy key generator and
     # encrypts and re-saves them using the new key generator to provide a smooth upgrade path.
     class UpgradeLegacyEncryptedCookieJar < EncryptedCookieJar #:nodoc:

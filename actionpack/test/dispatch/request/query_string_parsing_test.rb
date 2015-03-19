@@ -95,8 +95,8 @@ class QueryStringParsingTest < ActionDispatch::IntegrationTest
     assert_parses({"action" => nil}, "action")
     assert_parses({"action" => {"foo" => nil}}, "action[foo]")
     assert_parses({"action" => {"foo" => { "bar" => nil }}}, "action[foo][bar]")
-    assert_parses({"action" => {"foo" => { "bar" => nil }}}, "action[foo][bar][]")
-    assert_parses({"action" => {"foo" => nil }}, "action[foo][]")
+    assert_parses({"action" => {"foo" => { "bar" => [] }}}, "action[foo][bar][]")
+    assert_parses({"action" => {"foo" => [] }}, "action[foo][]")
     assert_parses({"action"=>{"foo"=>[{"bar"=>nil}]}}, "action[foo][][bar]")
   end
 
@@ -105,6 +105,7 @@ class QueryStringParsingTest < ActionDispatch::IntegrationTest
   end
 
   test "perform_deep_munge" do
+    old_perform_deep_munge = ActionDispatch::Request::Utils.perform_deep_munge
     ActionDispatch::Request::Utils.perform_deep_munge = false
     begin
       assert_parses({"action" => nil}, "action")
@@ -115,7 +116,7 @@ class QueryStringParsingTest < ActionDispatch::IntegrationTest
       assert_parses({"action" => {"foo" => [{"bar" => nil}]}}, "action[foo][][bar]")
       assert_parses({"action" => ['1',nil]}, "action[]=1&action[]")
     ensure
-      ActionDispatch::Request::Utils.perform_deep_munge = true
+      ActionDispatch::Request::Utils.perform_deep_munge = old_perform_deep_munge
     end
   end
 
@@ -146,7 +147,7 @@ class QueryStringParsingTest < ActionDispatch::IntegrationTest
         get ':action', :to => ::QueryStringParsingTest::TestController
       end
 
-      get "/parse", nil, "QUERY_STRING" => "foo[]=bar&foo[4]=bar"
+      get "/parse", headers: { "QUERY_STRING" => "foo[]=bar&foo[4]=bar" }
       assert_response :bad_request
     end
   end
@@ -161,8 +162,7 @@ class QueryStringParsingTest < ActionDispatch::IntegrationTest
           middleware.use(EarlyParse)
         end
 
-
-        get "/parse", actual
+        get "/parse", params: actual
         assert_response :ok
         assert_equal(expected, ::QueryStringParsingTest::TestController.last_query_parameters)
       end

@@ -14,6 +14,12 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     end
   end
 
+  class GrumpyRestrictor
+    def self.matches?(request)
+      false
+    end
+  end
+
   class YoutubeFavoritesRedirector
     def self.call(params, request)
       "http://www.youtube.com/watch?v=#{params[:youtube_id]}"
@@ -89,6 +95,24 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     verify_redirect 'http://www.example.com/private/index'
   end
 
+  def test_redirect_with_failing_constraint
+    draw do
+      get 'hi', to: redirect("/foo"), constraints: ::TestRoutingMapper::GrumpyRestrictor
+    end
+
+    get '/hi'
+    assert_equal 404, status
+  end
+
+  def test_redirect_with_passing_constraint
+    draw do
+      get 'hi', to: redirect("/foo"), constraints: ->(req) { true }
+    end
+
+    get '/hi'
+    assert_equal 301, status
+  end
+
   def test_namespace_with_controller_segment
     assert_raise(ArgumentError) do
       draw do
@@ -97,6 +121,16 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
         end
       end
     end
+  end
+
+  def test_namespace_without_controller_segment
+    draw do
+      namespace :admin do
+        get 'hello/:controllers/:action'
+      end
+    end
+    get '/admin/hello/foo/new'
+    assert_equal 'foo', @request.params["controllers"]
   end
 
   def test_session_singleton_resource
@@ -328,22 +362,22 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
       get 'admin/passwords' => "queenbee#passwords", :constraints => ::TestRoutingMapper::IpRestrictor
     end
 
-    get '/admin', {}, {'REMOTE_ADDR' => '192.168.1.100'}
+    get '/admin', headers: { 'REMOTE_ADDR' => '192.168.1.100' }
     assert_equal 'queenbee#index', @response.body
 
-    get '/admin', {}, {'REMOTE_ADDR' => '10.0.0.100'}
+    get '/admin', headers: { 'REMOTE_ADDR' => '10.0.0.100' }
     assert_equal 'pass', @response.headers['X-Cascade']
 
-    get '/admin/accounts', {}, {'REMOTE_ADDR' => '192.168.1.100'}
+    get '/admin/accounts', headers: { 'REMOTE_ADDR' => '192.168.1.100' }
     assert_equal 'queenbee#accounts', @response.body
 
-    get '/admin/accounts', {}, {'REMOTE_ADDR' => '10.0.0.100'}
+    get '/admin/accounts', headers: { 'REMOTE_ADDR' => '10.0.0.100' }
     assert_equal 'pass', @response.headers['X-Cascade']
 
-    get '/admin/passwords', {}, {'REMOTE_ADDR' => '192.168.1.100'}
+    get '/admin/passwords', headers: { 'REMOTE_ADDR' => '192.168.1.100' }
     assert_equal 'queenbee#passwords', @response.body
 
-    get '/admin/passwords', {}, {'REMOTE_ADDR' => '10.0.0.100'}
+    get '/admin/passwords', headers: { 'REMOTE_ADDR' => '10.0.0.100' }
     assert_equal 'pass', @response.headers['X-Cascade']
   end
 
@@ -351,8 +385,8 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     draw do
       controller(:global) do
         get 'global/hide_notice'
-        get 'global/export',      :to => :export, :as => :export_request
-        get '/export/:id/:file',  :to => :export, :as => :export_download, :constraints => { :file => /.*/ }
+        get 'global/export',      :action => :export, :as => :export_request
+        get '/export/:id/:file',  :action => :export, :as => :export_download, :constraints => { :file => /.*/ }
         get 'global/:action'
       end
     end
@@ -720,8 +754,8 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     draw do
       resources :replies do
         member do
-          put :answer, :to => :mark_as_answer
-          delete :answer, :to => :unmark_as_answer
+          put :answer, :action => :mark_as_answer
+          delete :answer, :action => :unmark_as_answer
         end
       end
     end
@@ -1178,7 +1212,7 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
       controller :articles do
         scope '/articles', :as => 'article' do
           scope :path => '/:title', :title => /[a-z]+/, :as => :with_title do
-            get '/:id', :to => :with_id, :as => ""
+            get '/:id', :action => :with_id, :as => ""
           end
         end
       end
@@ -1396,6 +1430,15 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     assert_equal 'api/v3/products#list', @response.body
   end
 
+  def test_not_matching_shorthand_with_dynamic_parameters
+    draw do
+      get ':controller/:action/admin'
+    end
+
+    get '/finances/overview/admin'
+    assert_equal 'finances#overview', @response.body
+  end
+
   def test_controller_option_with_nesting_and_leading_slash
     draw do
       scope '/job', controller: 'job' do
@@ -1425,7 +1468,7 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
   def test_scoped_controller_with_namespace_and_action
     draw do
       namespace :account do
-        get ':action/callback', :action => /twitter|github/, :to => "callbacks", :as => :callback
+        get ':action/callback', :action => /twitter|github/, :controller => "callbacks", :as => :callback
       end
     end
 
@@ -1482,7 +1525,7 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
   def test_normalize_namespaced_matches
     draw do
       namespace :account do
-        get 'description', :to => :description, :as => "description"
+        get 'description', :action => :description, :as => "description"
       end
     end
 
@@ -1649,9 +1692,9 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     get '/products/0001/images/0001'
     assert_equal 'images#show', @response.body
 
-    get '/dashboard', {}, {'REMOTE_ADDR' => '10.0.0.100'}
+    get '/dashboard', headers: { 'REMOTE_ADDR' => '10.0.0.100' }
     assert_equal 'pass', @response.headers['X-Cascade']
-    get '/dashboard', {}, {'REMOTE_ADDR' => '192.168.1.100'}
+    get '/dashboard', headers: { 'REMOTE_ADDR' => '192.168.1.100' }
     assert_equal 'dashboards#show', @response.body
   end
 
@@ -1723,7 +1766,7 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
       get "whatever/:controller(/:action(/:id))"
     end
 
-    get 'whatever/foo/bar'
+    get '/whatever/foo/bar'
     assert_equal 'foo#bar', @response.body
 
     assert_equal 'http://www.example.com/whatever/foo/bar/1',
@@ -1735,10 +1778,10 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
       get "whatever/:controller(/:action(/:id))", :id => /\d+/
     end
 
-    get 'whatever/foo/bar/show'
+    get '/whatever/foo/bar/show'
     assert_equal 'foo/bar#show', @response.body
 
-    get 'whatever/foo/bar/show/1'
+    get '/whatever/foo/bar/show/1'
     assert_equal 'foo/bar#show', @response.body
 
     assert_equal 'http://www.example.com/whatever/foo/bar/show',
@@ -2012,6 +2055,28 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     assert_equal '/blogs/1/posts/2/comments/new', new_blog_post_comment_path(:blog_id => 1, :post_id => 2)
   end
 
+  def test_direct_children_of_shallow_resources
+    draw do
+      resources :blogs do
+        resources :posts, shallow: true do
+          resources :comments
+        end
+      end
+    end
+
+    post '/posts/1/comments'
+    assert_equal 'comments#create', @response.body
+    assert_equal '/posts/1/comments', post_comments_path('1')
+
+    get '/posts/2/comments/new'
+    assert_equal 'comments#new', @response.body
+    assert_equal '/posts/2/comments/new', new_post_comment_path('2')
+
+    get '/posts/1/comments'
+    assert_equal 'comments#index', @response.body
+    assert_equal '/posts/1/comments', post_comments_path('1')
+  end
+
   def test_shallow_nested_resources_within_scope
     draw do
       scope '/hello' do
@@ -2144,7 +2209,7 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
         end
         resources :invoices do
           get "outstanding" => "invoices#outstanding", :on => :collection
-          get "overdue", :to => :overdue, :on => :collection
+          get "overdue", :action => :overdue, :on => :collection
           get "print" => "invoices#print", :as => :print, :on => :member
           post "preview" => "invoices#preview", :as => :preview, :on => :new
         end
@@ -2232,6 +2297,22 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     assert_equal '/api/1.0/users/first.last.xml', api_user_path(:version => '1.0', :id => 'first.last', :format => :xml)
   end
 
+  def test_match_without_via
+    assert_raises(ArgumentError) do
+      draw do
+        match '/foo/bar', :to => 'files#show'
+      end
+    end
+  end
+
+  def test_match_with_empty_via
+    assert_raises(ArgumentError) do
+      draw do
+        match '/foo/bar', :to => 'files#show', :via => []
+      end
+    end
+  end
+
   def test_glob_parameter_accepts_regexp
     draw do
       get '/:locale/*file.:format', :to => 'files#show', :file => /path\/to\/existing\/file/
@@ -2287,12 +2368,12 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
       get "(/user/:username)/photos" => "photos#index"
     end
 
-    get 'user/bob/photos'
+    get '/user/bob/photos'
     assert_equal 'photos#index', @response.body
     assert_equal 'http://www.example.com/user/bob/photos',
       url_for(:controller => "photos", :action => "index", :username => "bob")
 
-    get 'photos'
+    get '/photos'
     assert_equal 'photos#index', @response.body
     assert_equal 'http://www.example.com/photos',
       url_for(:controller => "photos", :action => "index", :username => nil)
@@ -2805,7 +2886,7 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     end
   end
 
-  def test_symbolized_path_parameters_is_not_stale
+  def test_path_parameters_is_not_stale
     draw do
       scope '/countries/:country', :constraints => lambda { |params, req| %w(all France).include?(params[:country]) } do
         get '/',       :to => 'countries#index'
@@ -2970,7 +3051,9 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     end
 
     assert_raise(ArgumentError) do
-      draw { controller("/feeds") { get '/feeds/:service', :to => :show } }
+      assert_deprecated do
+        draw { controller("/feeds") { get '/feeds/:service', :to => :show } }
+      end
     end
 
     assert_raise(ArgumentError) do
@@ -3120,12 +3203,24 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
 
     get '/downloads/1/1.tar'
     assert_equal 'downloads#show', @response.body
-    assert_equal expected_params, @request.symbolized_path_parameters
+    assert_equal expected_params, @request.path_parameters
     assert_equal '/downloads/1/1.tar', download_path('1')
     assert_equal '/downloads/1/1.tar', download_path('1', '1')
   end
 
   def test_absolute_controller_namespace
+    draw do
+      namespace :foo do
+        get '/', to: '/bar#index', as: 'root'
+      end
+    end
+
+    get '/foo'
+    assert_equal 'bar#index', @response.body
+    assert_equal '/foo', foo_root_path
+  end
+
+  def test_namespace_as_controller
     draw do
       namespace :foo do
         get '/', to: '/bar#index', as: 'root'
@@ -3215,6 +3310,34 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     get '/admin/posts/1/comments'
     assert_equal 'admin/comments#index', @response.body
     assert_equal '/admin/posts/1/comments', admin_post_comments_path('1')
+  end
+
+  def test_mix_string_to_controller_action
+    draw do
+      get '/projects', controller: 'project_files',
+                       action: 'index',
+                       to: 'comments#index'
+    end
+    get '/projects'
+    assert_equal 'comments#index', @response.body
+  end
+
+  def test_mix_string_to_controller
+    draw do
+      get '/projects', controller: 'project_files',
+                       to: 'comments#index'
+    end
+    get '/projects'
+    assert_equal 'comments#index', @response.body
+  end
+
+  def test_mix_string_to_action
+    draw do
+      get '/projects', action: 'index',
+                       to: 'comments#index'
+    end
+    get '/projects'
+    assert_equal 'comments#index', @response.body
   end
 
   def test_shallow_path_and_prefix_are_not_added_to_non_shallow_routes
@@ -3325,23 +3448,80 @@ class TestRoutingMapper < ActionDispatch::IntegrationTest
     assert_equal '/bar/comments/1', comment_path('1')
   end
 
+  def test_resource_where_as_is_empty
+    draw do
+      resource :post, as: ''
+
+      scope 'post', as: 'post' do
+        resource :comment, as: ''
+      end
+    end
+
+    assert_equal '/post/new', new_path
+    assert_equal '/post/comment/new', new_post_path
+  end
+
+  def test_resources_where_as_is_empty
+    draw do
+      resources :posts, as: ''
+
+      scope 'posts', as: 'posts' do
+        resources :comments, as: ''
+      end
+    end
+
+    assert_equal '/posts/new', new_path
+    assert_equal '/posts/comments/new', new_posts_path
+  end
+
+  def test_scope_where_as_is_empty
+    draw do
+      scope 'post', as: '' do
+        resource :user
+        resources :comments
+      end
+    end
+
+    assert_equal '/post/user/new', new_user_path
+    assert_equal '/post/comments/new', new_comment_path
+  end
+
+  def test_head_fetch_with_mount_on_root
+    draw do
+      get '/home' => 'test#index'
+      mount lambda { |env| [200, {}, [env['REQUEST_METHOD']]] }, at: '/'
+    end
+
+    # TODO: HEAD request should match `get /home` rather than the
+    # lower-precedence Rack app mounted at `/`.
+    head '/home'
+    assert_response :ok
+    #assert_equal 'test#index', @response.body
+    assert_equal 'HEAD', @response.body
+
+    # But the Rack app can still respond to its own HEAD requests.
+    head '/foobar'
+    assert_response :ok
+    assert_equal 'HEAD', @response.body
+  end
+
 private
 
   def draw(&block)
     self.class.stub_controllers do |routes|
-      @app = routes
-      @app.default_url_options = { host: 'www.example.com' }
-      @app.draw(&block)
+      routes.default_url_options = { host: 'www.example.com' }
+      routes.draw(&block)
+      @app = RoutedRackApp.new routes
     end
   end
 
   def url_for(options = {})
-    @app.url_helpers.url_for(options)
+    @app.routes.url_helpers.url_for(options)
   end
 
   def method_missing(method, *args, &block)
     if method.to_s =~ /_(path|url)$/
-      @app.url_helpers.send(method, *args, &block)
+      @app.routes.url_helpers.send(method, *args, &block)
     else
       super
     end
@@ -3368,12 +3548,14 @@ end
 
 class TestAltApp < ActionDispatch::IntegrationTest
   class AltRequest
-    def initialize(env)
-      @env = env
-    end
+    attr_accessor :path_parameters, :path_info, :script_name
+    attr_reader :env
 
-    def path_info
-      "/"
+    def initialize(env)
+      @path_parameters = {}
+      @env = env
+      @path_info = "/"
+      @script_name = ""
     end
 
     def request_method
@@ -3401,14 +3583,20 @@ class TestAltApp < ActionDispatch::IntegrationTest
     end
   end
 
-  AltRoutes = ActionDispatch::Routing::RouteSet.new(AltRequest)
+  AltRoutes = Class.new(ActionDispatch::Routing::RouteSet) {
+    def request_class
+      AltRequest
+    end
+  }.new
   AltRoutes.draw do
     get "/" => TestAltApp::XHeader.new, :constraints => {:x_header => /HEADER/}
     get "/" => TestAltApp::AltApp.new
   end
 
+  APP = build_app AltRoutes
+
   def app
-    AltRoutes
+    APP
   end
 
   def test_alt_request_without_header
@@ -3417,12 +3605,12 @@ class TestAltApp < ActionDispatch::IntegrationTest
   end
 
   def test_alt_request_with_matched_header
-    get "/", {}, "HTTP_X_HEADER" => "HEADER"
+    get "/", headers: { "HTTP_X_HEADER" => "HEADER" }
     assert_equal "XHeader", @response.body
   end
 
   def test_alt_request_with_unmatched_header
-    get "/", {}, "HTTP_X_HEADER" => "NON_MATCH"
+    get "/", headers: { "HTTP_X_HEADER" => "NON_MATCH" }
     assert_equal "Alternative App", @response.body
   end
 end
@@ -3435,15 +3623,16 @@ class TestAppendingRoutes < ActionDispatch::IntegrationTest
   def setup
     super
     s = self
-    @app = ActionDispatch::Routing::RouteSet.new
-    @app.append do
+    routes = ActionDispatch::Routing::RouteSet.new
+    routes.append do
       get '/hello'   => s.simple_app('fail')
       get '/goodbye' => s.simple_app('goodbye')
     end
 
-    @app.draw do
+    routes.draw do
       get '/hello' => s.simple_app('hello')
     end
+    @app = self.class.build_app routes
   end
 
   def test_goodbye_should_be_available
@@ -3472,8 +3661,36 @@ class TestNamespaceWithControllerOption < ActionDispatch::IntegrationTest
   end
 
   def draw(&block)
-    @app = ActionDispatch::Routing::RouteSet.new
-    @app.draw(&block)
+    routes = ActionDispatch::Routing::RouteSet.new
+    routes.draw(&block)
+    @app = self.class.build_app routes
+  end
+
+  def test_missing_controller
+    ex = assert_raises(ArgumentError) {
+      draw do
+        get '/foo/bar', :action => :index
+      end
+    }
+    assert_match(/Missing :controller/, ex.message)
+  end
+
+  def test_missing_controller_with_to
+    ex = assert_raises(ArgumentError) {
+      draw do
+        get '/foo/bar', :to => 'foo'
+      end
+    }
+    assert_match(/Missing :controller/, ex.message)
+  end
+
+  def test_missing_action_on_hash
+    ex = assert_raises(ArgumentError) {
+      draw do
+        get '/foo/bar', :to => 'foo#'
+      end
+    }
+    assert_match(/Missing :action/, ex.message)
   end
 
   def test_valid_controller_options_inside_namespace
@@ -3492,7 +3709,7 @@ class TestNamespaceWithControllerOption < ActionDispatch::IntegrationTest
       resources :storage_files, :controller => 'admin/storage_files'
     end
 
-    get 'storage_files'
+    get '/storage_files'
     assert_equal "admin/storage_files#index", @response.body
   end
 
@@ -3517,6 +3734,16 @@ class TestNamespaceWithControllerOption < ActionDispatch::IntegrationTest
 
     assert_match "'Admin::StorageFiles' is not a supported controller name", e.message
   end
+
+  def test_warn_with_ruby_constant_syntax_no_colons
+    e = assert_raise(ArgumentError) do
+      draw do
+        resources :storage_files, :controller => 'Admin'
+      end
+    end
+
+    assert_match "'Admin' is not a supported controller name", e.message
+  end
 end
 
 class TestDefaultScope < ActionDispatch::IntegrationTest
@@ -3534,8 +3761,10 @@ class TestDefaultScope < ActionDispatch::IntegrationTest
     resources :posts
   end
 
+  APP = build_app DefaultScopeRoutes
+
   def app
-    DefaultScopeRoutes
+    APP
   end
 
   include DefaultScopeRoutes.url_helpers
@@ -3553,26 +3782,30 @@ class TestHttpMethods < ActionDispatch::IntegrationTest
   RFC3648 = %w(ORDERPATCH)
   RFC3744 = %w(ACL)
   RFC5323 = %w(SEARCH)
+  RFC4791 = %w(MKCALENDAR)
   RFC5789 = %w(PATCH)
 
   def simple_app(response)
     lambda { |env| [ 200, { 'Content-Type' => 'text/plain' }, [response] ] }
   end
 
-  setup do
-    s = self
-    @app = ActionDispatch::Routing::RouteSet.new
+  attr_reader :app
 
-    @app.draw do
-      (RFC2616 + RFC2518 + RFC3253 + RFC3648 + RFC3744 + RFC5323 + RFC5789).each do |method|
+  def setup
+    s = self
+    routes = ActionDispatch::Routing::RouteSet.new
+    @app = RoutedRackApp.new routes
+
+    routes.draw do
+      (RFC2616 + RFC2518 + RFC3253 + RFC3648 + RFC3744 + RFC5323 + RFC4791 + RFC5789).each do |method|
         match '/' => s.simple_app(method), :via => method.underscore.to_sym
       end
     end
   end
 
-  (RFC2616 + RFC2518 + RFC3253 + RFC3648 + RFC3744 + RFC5323 + RFC5789).each do |method|
+  (RFC2616 + RFC2518 + RFC3253 + RFC3648 + RFC3744 + RFC5323 + RFC4791 + RFC5789).each do |method|
     test "request method #{method.underscore} can be matched" do
-      get '/', nil, 'REQUEST_METHOD' => method
+      get '/', headers: { 'REQUEST_METHOD' => method }
       assert_equal method, @response.body
     end
   end
@@ -3594,7 +3827,8 @@ class TestUriPathEscaping < ActionDispatch::IntegrationTest
   end
 
   include Routes.url_helpers
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   test 'escapes slash in generated path segment' do
     assert_equal '/a%20b%2Fc+d', segment_path(:segment => 'a b/c+d')
@@ -3625,7 +3859,8 @@ class TestUnicodePaths < ActionDispatch::IntegrationTest
   end
 
   include Routes.url_helpers
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   test 'recognizes unicode path' do
     get "/#{Rack::Utils.escape("ほげ")}"
@@ -3656,7 +3891,8 @@ class TestMultipleNestedController < ActionDispatch::IntegrationTest
   end
 
   include Routes.url_helpers
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   test "controller option which starts with '/' from multiple nested controller" do
     get "/foo/bar/baz"
@@ -3675,7 +3911,8 @@ class TestTildeAndMinusPaths < ActionDispatch::IntegrationTest
   end
 
   include Routes.url_helpers
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   test 'recognizes tilde path' do
     get "/~user"
@@ -3702,7 +3939,8 @@ class TestRedirectInterpolation < ActionDispatch::IntegrationTest
     end
   end
 
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   test "redirect escapes interpolated parameters with redirect proc" do
     get "/foo/1%3E"
@@ -3744,7 +3982,8 @@ class TestConstraintsAccessingParameters < ActionDispatch::IntegrationTest
     end
   end
 
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   test "parameters are reset between constraint checks" do
     get "/bar"
@@ -3764,7 +4003,8 @@ class TestGlobRoutingMapper < ActionDispatch::IntegrationTest
   end
 
   #include Routes.url_helpers
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   def test_glob_constraint
     get "/dummy"
@@ -3796,7 +4036,8 @@ class TestOptimizedNamedRoutes < ActionDispatch::IntegrationTest
   end
 
   include Routes.url_helpers
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   test 'enabled when not mounted and default_url_options is empty' do
     assert Routes.url_helpers.optimize_routes_generation?
@@ -3868,7 +4109,8 @@ class TestNamedRouteUrlHelpers < ActionDispatch::IntegrationTest
     end
   end
 
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   include Routes.url_helpers
 
@@ -3903,7 +4145,8 @@ class TestUrlConstraints < ActionDispatch::IntegrationTest
   end
 
   include Routes.url_helpers
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   test "constraints are copied to defaults when using constraints method" do
     assert_equal 'http://admin.example.com/', admin_root_url
@@ -3957,7 +4200,7 @@ class TestInvalidUrls < ActionDispatch::IntegrationTest
       set.draw do
         get "/bar/:id", :to => redirect("/foo/show/%{id}")
         get "/foo/show(/:id)", :to => "test_invalid_urls/foo#show"
-        get "/foo(/:action(/:id))", :to => "test_invalid_urls/foo"
+        get "/foo(/:action(/:id))", :controller => "test_invalid_urls/foo"
         get "/:controller(/:action(/:id))"
       end
 
@@ -3984,8 +4227,9 @@ class TestOptionalRootSegments < ActionDispatch::IntegrationTest
     end
   end
 
+  APP = build_app Routes
   def app
-    Routes
+    APP
   end
 
   include Routes.url_helpers
@@ -4016,7 +4260,8 @@ class TestPortConstraints < ActionDispatch::IntegrationTest
   end
 
   include Routes.url_helpers
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   def test_integer_port_constraints
     get 'http://www.example.com/integer'
@@ -4064,7 +4309,8 @@ class TestFormatConstraints < ActionDispatch::IntegrationTest
   end
 
   include Routes.url_helpers
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   def test_string_format_constraints
     get 'http://www.example.com/string'
@@ -4111,6 +4357,17 @@ class TestFormatConstraints < ActionDispatch::IntegrationTest
   end
 end
 
+class TestCallableConstraintValidation < ActionDispatch::IntegrationTest
+  def test_constraint_with_object_not_callable
+    assert_raises(ArgumentError) do
+      ActionDispatch::Routing::RouteSet.new.draw do
+        ok = lambda { |env| [200, { 'Content-Type' => 'text/plain' }, []] }
+        get '/test', to: ok, constraints: Object.new
+      end
+    end
+  end
+end
+
 class TestRouteDefaults < ActionDispatch::IntegrationTest
   stub_controllers do |routes|
     Routes = routes
@@ -4120,8 +4377,9 @@ class TestRouteDefaults < ActionDispatch::IntegrationTest
     end
   end
 
+  APP = build_app Routes
   def app
-    Routes
+    APP
   end
 
   include Routes.url_helpers
@@ -4149,8 +4407,9 @@ class TestRackAppRouteGeneration < ActionDispatch::IntegrationTest
     end
   end
 
+  APP = build_app Routes
   def app
-    Routes
+    APP
   end
 
   include Routes.url_helpers
@@ -4175,8 +4434,9 @@ class TestRedirectRouteGeneration < ActionDispatch::IntegrationTest
     end
   end
 
+  APP = build_app Routes
   def app
-    Routes
+    APP
   end
 
   include Routes.url_helpers
@@ -4199,11 +4459,12 @@ class TestUrlGenerationErrors < ActionDispatch::IntegrationTest
     end
   end
 
-  def app; Routes end
+  APP = build_app Routes
+  def app; APP end
 
   include Routes.url_helpers
 
-  test "url helpers raise a helpful error message whem generation fails" do
+  test "url helpers raise a helpful error message when generation fails" do
     url, missing = { action: 'show', controller: 'products', id: nil }, [:id]
     message = "No route matches #{url.inspect} missing required keys: #{missing.inspect}"
 
@@ -4214,5 +4475,33 @@ class TestUrlGenerationErrors < ActionDispatch::IntegrationTest
     # Non-optimized url helper
     error = assert_raises(ActionController::UrlGenerationError, message){ product_path(id: nil) }
     assert_equal message, error.message
+  end
+end
+
+class TestDefaultUrlOptions < ActionDispatch::IntegrationTest
+  class PostsController < ActionController::Base
+    def archive
+      render :text => "posts#archive"
+    end
+  end
+
+  Routes = ActionDispatch::Routing::RouteSet.new
+  Routes.draw do
+    default_url_options locale: 'en'
+    scope ':locale', format: false do
+      get '/posts/:year/:month/:day', to: 'posts#archive', as: 'archived_posts'
+    end
+  end
+
+  APP = build_app Routes
+
+  def app
+    APP
+  end
+
+  include Routes.url_helpers
+
+  def test_positional_args_with_format_false
+    assert_equal '/en/posts/2014/12/13', archived_posts_path(2014, 12, 13)
   end
 end

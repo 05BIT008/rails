@@ -1,22 +1,19 @@
 require 'active_support/test_case'
+require 'active_support/testing/stream'
 
 module ActiveRecord
   # = Active Record Test Case
   #
   # Defines some test assertions to test against SQL queries.
   class TestCase < ActiveSupport::TestCase #:nodoc:
+    include ActiveSupport::Testing::Stream
+
     def teardown
       SQLCounter.clear_log
     end
 
     def assert_date_from_db(expected, actual, message = nil)
-      # SybaseAdapter doesn't have a separate column type just for dates,
-      # so the time is in the string and incorrectly formatted
-      if current_adapter?(:SybaseAdapter)
-        assert_equal expected.to_s, actual.to_date.to_s, message
-      else
-        assert_equal expected.to_s, actual.to_s, message
-      end
+      assert_equal expected.to_s, actual.to_s, message
     end
 
     def capture_sql
@@ -32,7 +29,7 @@ module ActiveRecord
       patterns_to_match.each do |pattern|
         failed_patterns << pattern unless SQLCounter.log_all.any?{ |sql| pattern === sql }
       end
-      assert failed_patterns.empty?, "Query pattern(s) #{failed_patterns.map{ |p| p.inspect }.join(', ')} not found.#{SQLCounter.log.size == 0 ? '' : "\nQueries:\n#{SQLCounter.log.join("\n")}"}"
+      assert failed_patterns.empty?, "Query pattern(s) #{failed_patterns.map(&:inspect).join(', ')} not found.#{SQLCounter.log.size == 0 ? '' : "\nQueries:\n#{SQLCounter.log.join("\n")}"}"
     end
 
     def assert_queries(num = 1, options = {})
@@ -82,8 +79,8 @@ module ActiveRecord
     # ignored SQL, or better yet, use a different notification for the queries
     # instead examining the SQL content.
     oracle_ignored     = [/^select .*nextval/i, /^SAVEPOINT/, /^ROLLBACK TO/, /^\s*select .* from all_triggers/im, /^\s*select .* from all_constraints/im, /^\s*select .* from all_tab_cols/im]
-    mysql_ignored      = [/^SHOW TABLES/i, /^SHOW FULL FIELDS/, /^SHOW CREATE TABLE /i]
-    postgresql_ignored = [/^\s*select\b.*\bfrom\b.*pg_namespace\b/im, /^\s*select\b.*\battname\b.*\bfrom\b.*\bpg_attribute\b/im, /^SHOW search_path/i]
+    mysql_ignored      = [/^SHOW TABLES/i, /^SHOW FULL FIELDS/, /^SHOW CREATE TABLE /i, /^SHOW VARIABLES /]
+    postgresql_ignored = [/^\s*select\b.*\bfrom\b.*pg_namespace\b/im, /^\s*select tablename\b.*from pg_tables\b/im, /^\s*select\b.*\battname\b.*\bfrom\b.*\bpg_attribute\b/im, /^SHOW search_path/i]
     sqlite3_ignored =    [/^\s*SELECT name\b.*\bFROM sqlite_master/im]
 
     [oracle_ignored, mysql_ignored, postgresql_ignored, sqlite3_ignored].each do |db_ignored_sql|

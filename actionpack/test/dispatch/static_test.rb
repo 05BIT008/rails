@@ -1,6 +1,5 @@
-# encoding: utf-8
 require 'abstract_unit'
-require 'rbconfig'
+require 'zlib'
 
 module StaticTests
   def test_serves_dynamic_content
@@ -34,6 +33,10 @@ module StaticTests
     assert_html "/foo/index.html", get("/foo/index.html")
     assert_html "/foo/index.html", get("/foo/")
     assert_html "/foo/index.html", get("/foo")
+  end
+
+  def test_serves_file_with_same_name_before_index_in_directory
+    assert_html "/bar.html", get("/bar")
   end
 
   def test_served_static_file_with_non_english_filename
@@ -106,6 +109,50 @@ module StaticTests
     end
   end
 
+  def test_serves_gzip_files_when_header_set
+    file_name = "/gzip/application-a71b3024f80aea3181c09774ca17e712.js"
+    response  = get(file_name, 'HTTP_ACCEPT_ENCODING' => 'gzip')
+    assert_gzip  file_name, response
+    assert_equal 'application/javascript', response.headers['Content-Type']
+    assert_equal 'Accept-Encoding',        response.headers["Vary"]
+    assert_equal 'gzip',                   response.headers["Content-Encoding"]
+
+    response  = get(file_name, 'HTTP_ACCEPT_ENCODING' => 'Gzip')
+    assert_gzip  file_name, response
+
+    response  = get(file_name, 'HTTP_ACCEPT_ENCODING' => 'GZIP')
+    assert_gzip  file_name, response
+
+    response  = get(file_name, 'HTTP_ACCEPT_ENCODING' => '')
+    assert_not_equal 'gzip', response.headers["Content-Encoding"]
+  end
+
+  def test_does_not_modify_path_info
+    file_name = "/gzip/application-a71b3024f80aea3181c09774ca17e712.js"
+    env = {'PATH_INFO' => file_name, 'HTTP_ACCEPT_ENCODING' => 'gzip'}
+    @app.call(env)
+    assert_equal file_name, env['PATH_INFO']
+  end
+
+  def test_serves_gzip_with_propper_content_type_fallback
+    file_name = "/gzip/foo.zoo"
+    response  = get(file_name, 'HTTP_ACCEPT_ENCODING' => 'gzip')
+    assert_gzip  file_name, response
+
+    default_response = get(file_name) # no gzip
+    assert_equal default_response.headers['Content-Type'], response.headers['Content-Type']
+  end
+
+  def test_serves_gzip_files_with_not_modified
+    file_name = "/gzip/application-a71b3024f80aea3181c09774ca17e712.js"
+    last_modified = File.mtime(File.join(@root, "#{file_name}.gz"))
+    response = get(file_name, 'HTTP_ACCEPT_ENCODING' => 'gzip', 'HTTP_IF_MODIFIED_SINCE' => last_modified.httpdate)
+    assert_equal 304, response.status
+    assert_equal nil, response.headers['Content-Type']
+    assert_equal nil, response.headers['Content-Encoding']
+    assert_equal nil, response.headers['Vary']
+  end
+
   # Windows doesn't allow \ / : * ? " < > | in filenames
   unless RbConfig::CONFIG['host_os'] =~ /mswin|mingw/
     def test_serves_static_file_with_colon
@@ -125,13 +172,20 @@ module StaticTests
 
   private
 
+    def assert_gzip(file_name, response)
+      expected = File.read("#{FIXTURE_LOAD_PATH}/#{public_path}" + file_name)
+      actual   = Zlib::GzipReader.new(StringIO.new(response.body)).read
+      assert_equal expected, actual
+    end
+
     def assert_html(body, response)
       assert_equal body, response.body
       assert_equal "text/html", response.headers["Content-Type"]
+      assert_nil response.headers["Vary"]
     end
 
-    def get(path)
-      Rack::MockRequest.new(@app).request("GET", path)
+    def get(path, headers = {})
+      Rack::MockRequest.new(@app).request("GET", path, headers)
     end
 
     def with_static_file(file)
@@ -154,7 +208,8 @@ class StaticTest < ActiveSupport::TestCase
   }
 
   def setup
-    @app = ActionDispatch::Static.new(DummyApp, "#{FIXTURE_LOAD_PATH}/public", "public, max-age=60")
+    @root = "#{FIXTURE_LOAD_PATH}/public"
+    @app = ActionDispatch::Static.new(DummyApp, @root, "public, max-age=60")
   end
 
   def public_path
@@ -162,11 +217,28 @@ class StaticTest < ActiveSupport::TestCase
   end
 
   include StaticTests
+
+  def test_custom_handler_called_when_file_is_outside_root
+    filename = 'shared.html.erb'
+    assert File.exist?(File.join(@root, '..', filename))
+    env = {
+      "REQUEST_METHOD"=>"GET",
+      "REQUEST_PATH"=>"/..%2F#{filename}",
+      "PATH_INFO"=>"/..%2F#{filename}",
+      "REQUEST_URI"=>"/..%2F#{filename}",
+      "HTTP_VERSION"=>"HTTP/1.1",
+      "SERVER_NAME"=>"localhost",
+      "SERVER_PORT"=>"8080",
+      "QUERY_STRING"=>""
+    }
+    assert_equal(DummyApp.call(nil), @app.call(env))
+  end
 end
 
 class StaticEncodingTest < StaticTest
   def setup
-    @app = ActionDispatch::Static.new(DummyApp, "#{FIXTURE_LOAD_PATH}/公共", "public, max-age=60")
+    @root = "#{FIXTURE_LOAD_PATH}/公共"
+    @app = ActionDispatch::Static.new(DummyApp, @root, "public, max-age=60")
   end
 
   def public_path

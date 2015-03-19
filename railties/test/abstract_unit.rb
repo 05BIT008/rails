@@ -4,6 +4,7 @@ require File.expand_path("../../../load_paths", __FILE__)
 
 require 'stringio'
 require 'active_support/testing/autorun'
+require 'active_support/testing/stream'
 require 'fileutils'
 
 require 'active_support'
@@ -25,4 +26,8 @@ end
 # Skips the current run on JRuby using Minitest::Assertions#skip
 def jruby_skip(message = '')
   skip message if defined?(JRUBY_VERSION)
+end
+
+class ActiveSupport::TestCase
+  include ActiveSupport::Testing::Stream
 end

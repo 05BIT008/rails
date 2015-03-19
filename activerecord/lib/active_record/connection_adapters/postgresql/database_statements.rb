@@ -1,6 +1,6 @@
 module ActiveRecord
   module ConnectionAdapters
-    class PostgreSQLAdapter < AbstractAdapter
+    module PostgreSQL
       module DatabaseStatements
         def explain(arel, binds = [])
           sql = "EXPLAIN #{to_sql(arel, binds)}"
@@ -94,6 +94,11 @@ module ActiveRecord
           super.insert
         end
 
+        # The internal PostgreSQL identifier of the money data type.
+        MONEY_COLUMN_TYPE_OID = 790 #:nodoc:
+        # The internal PostgreSQL identifier of the BYTEA data type.
+        BYTEA_COLUMN_TYPE_OID = 17 #:nodoc:
+
         # create a 2D array representing the result set
         def result_as_array(res) #:nodoc:
           # check if we have any binary column and if they need escaping
@@ -149,10 +154,6 @@ module ActiveRecord
           log(sql, name) do
             @connection.async_exec(sql)
           end
-        end
-
-        def substitute_at(column, index)
-          Arel::Nodes::BindParam.new "$#{index + 1}"
         end
 
         def exec_query(sql, name = 'SQL', binds = [])
@@ -222,7 +223,7 @@ module ActiveRecord
         end
 
         # Aborts a transaction.
-        def rollback_db_transaction
+        def exec_rollback_db_transaction
           execute "ROLLBACK"
         end
       end

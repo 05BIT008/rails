@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 require 'isolation/abstract_unit'
 require 'rack/test'
 require 'active_support/json'
@@ -49,6 +48,8 @@ module ApplicationTests
           get '*path', to: lambda { |env| [200, { "Content-Type" => "text/html" }, ["Not an asset"]] }
         end
       RUBY
+
+      add_to_env_config "development", "config.assets.digest = false"
 
       require "#{app_path}/config/environment"
 
@@ -189,7 +190,6 @@ module ApplicationTests
     end
 
     test "asset pipeline should use a Sprockets::Index when config.assets.digest is true" do
-      add_to_config "config.assets.digest = true"
       add_to_config "config.action_controller.perform_caching = false"
 
       ENV["RAILS_ENV"] = "production"
@@ -202,8 +202,6 @@ module ApplicationTests
       app_file "app/assets/images/rails.png", "notactuallyapng"
       app_file "app/assets/stylesheets/application.css.erb", "<%= asset_path('rails.png') %>"
       app_file "app/assets/javascripts/application.js", "alert();"
-      # digest is default in false, we must enable it for test environment
-      add_to_config "config.assets.digest = true"
 
       precompile!
       manifest = Dir["#{app_path}/public/assets/manifest-*.json"].first
@@ -215,8 +213,6 @@ module ApplicationTests
 
     test "the manifest file should be saved by default in the same assets folder" do
       app_file "app/assets/javascripts/application.js", "alert();"
-      # digest is default in false, we must enable it for test environment
-      add_to_config "config.assets.digest = true"
       add_to_config "config.assets.prefix = '/x'"
 
       precompile!
@@ -228,7 +224,7 @@ module ApplicationTests
 
     test "assets do not require any assets group gem when manifest file is present" do
       app_file "app/assets/javascripts/application.js", "alert();"
-      add_to_env_config "production", "config.serve_static_assets = true"
+      add_to_env_config "production", "config.serve_static_files = true"
 
       ENV["RAILS_ENV"] = "production"
       precompile!
@@ -249,7 +245,6 @@ module ApplicationTests
     test "precompile properly refers files referenced with asset_path and runs in the provided RAILS_ENV" do
       app_file "app/assets/images/rails.png", "notactuallyapng"
       app_file "app/assets/stylesheets/application.css.erb", "<%= asset_path('rails.png') %>"
-      # digest is default in false, we must enable it for test environment
       add_to_env_config "test", "config.assets.digest = true"
 
       precompile!('RAILS_ENV=test')
@@ -281,12 +276,9 @@ module ApplicationTests
     test "precompile appends the md5 hash to files referenced with asset_path and run in production with digest true" do
       app_file "app/assets/images/rails.png", "notactuallyapng"
       app_file "app/assets/stylesheets/application.css.erb", "<%= asset_path('rails.png') %>"
-      add_to_config "config.assets.compile = true"
-      add_to_config "config.assets.digest = true"
 
-      ENV["RAILS_ENV"] = nil
-
-      precompile!('RAILS_GROUPS=assets')
+      ENV["RAILS_ENV"] = "production"
+      precompile!
 
       file = Dir["#{app_path}/public/assets/application-*.css"].first
       assert_match(/\/assets\/rails-([0-z]+)\.png/, File.read(file))
@@ -342,6 +334,8 @@ module ApplicationTests
         end
       RUBY
 
+      add_to_env_config "development", "config.assets.digest = false"
+
       require "#{app_path}/config/environment"
 
       class ::OmgController < ActionController::Base
@@ -365,6 +359,8 @@ module ApplicationTests
       end
 
       app_file "app/assets/javascripts/demo.js", "alert();"
+
+      add_to_env_config "development", "config.assets.digest = false"
 
       require "#{app_path}/config/environment"
 
@@ -395,7 +391,6 @@ module ApplicationTests
       app_file "app/assets/javascripts/application.js", "//= require_tree ."
       app_file "app/assets/javascripts/xmlhr.js.erb", "<%= Post.name %>"
 
-      add_to_config "config.assets.digest = false"
       precompile!
       assert_equal "Post;\n", File.read(Dir["#{app_path}/public/assets/application-*.js"].first)
     end
@@ -415,7 +410,6 @@ module ApplicationTests
     test "digested assets are not mistakenly removed" do
       app_file "app/assets/application.js", "alert();"
       add_to_config "config.assets.compile = true"
-      add_to_config "config.assets.digest = true"
 
       precompile!
 
@@ -438,6 +432,7 @@ module ApplicationTests
     test "asset urls should use the request's protocol by default" do
       app_with_assets_in_view
       add_to_config "config.asset_host = 'example.com'"
+      add_to_env_config "development", "config.assets.digest = false"
       require "#{app_path}/config/environment"
       class ::PostsController < ActionController::Base; end
 
@@ -450,8 +445,9 @@ module ApplicationTests
     test "asset urls should be protocol-relative if no request is in scope" do
       app_file "app/assets/images/rails.png", "notreallyapng"
       app_file "app/assets/javascripts/image_loader.js.erb", "var src='<%= image_path('rails.png') %>';"
-      add_to_config "config.assets.precompile = %w{image_loader.js}"
+      add_to_config "config.assets.precompile = %w{rails.png image_loader.js}"
       add_to_config "config.asset_host = 'example.com'"
+      add_to_env_config "development", "config.assets.digest = false"
       precompile!
 
       assert_match "src='//example.com/assets/rails.png'", File.read(Dir["#{app_path}/public/assets/image_loader-*.js"].first)
@@ -460,9 +456,9 @@ module ApplicationTests
     test "asset paths should use RAILS_RELATIVE_URL_ROOT by default" do
       ENV["RAILS_RELATIVE_URL_ROOT"] = "/sub/uri"
       app_file "app/assets/images/rails.png", "notreallyapng"
-
       app_file "app/assets/javascripts/app.js.erb", "var src='<%= image_path('rails.png') %>';"
-      add_to_config "config.assets.precompile = %w{app.js}"
+      add_to_config "config.assets.precompile = %w{rails.png app.js}"
+      add_to_env_config "development", "config.assets.digest = false"
       precompile!
 
       assert_match "src='/sub/uri/assets/rails.png'", File.read(Dir["#{app_path}/public/assets/app-*.js"].first)

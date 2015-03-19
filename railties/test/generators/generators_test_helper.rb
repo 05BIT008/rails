@@ -1,5 +1,6 @@
 require 'abstract_unit'
 require 'active_support/core_ext/module/remove_method'
+require 'active_support/testing/stream'
 require 'rails/generators'
 require 'rails/generators/test_case'
 
@@ -7,7 +8,7 @@ module Rails
   class << self
     remove_possible_method :root
     def root
-      @root ||= File.expand_path(File.join(File.dirname(__FILE__), '..', 'fixtures'))
+      @root ||= Pathname.new(File.expand_path('../../fixtures', __FILE__))
     end
   end
 end
@@ -23,6 +24,8 @@ require 'action_dispatch'
 require 'action_view'
 
 module GeneratorsTestHelper
+  include ActiveSupport::Testing::Stream
+
   def self.included(base)
     base.class_eval do
       destination File.join(Rails.root, "tmp")
@@ -41,4 +44,5 @@ module GeneratorsTestHelper
     FileUtils.mkdir_p(destination)
     FileUtils.cp routes, destination
   end
+
 end

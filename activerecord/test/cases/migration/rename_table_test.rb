@@ -39,41 +39,35 @@ module ActiveRecord
         end
       end
 
-      def test_rename_table
-        rename_table :test_models, :octopi
+      unless current_adapter?(:FbAdapter) # Firebird cannot rename tables
+        def test_rename_table
+          rename_table :test_models, :octopi
 
-        # Using explicit id in insert for compatibility across all databases
-        connection.enable_identity_insert("octopi", true) if current_adapter?(:SybaseAdapter)
+          connection.execute "INSERT INTO octopi (#{connection.quote_column_name('id')}, #{connection.quote_column_name('url')}) VALUES (1, 'http://www.foreverflying.com/octopus-black7.jpg')"
 
-        connection.execute "INSERT INTO octopi (#{connection.quote_column_name('id')}, #{connection.quote_column_name('url')}) VALUES (1, 'http://www.foreverflying.com/octopus-black7.jpg')"
+          assert_equal 'http://www.foreverflying.com/octopus-black7.jpg', connection.select_value("SELECT url FROM octopi WHERE id=1")
+        end
 
-        connection.enable_identity_insert("octopi", false) if current_adapter?(:SybaseAdapter)
+        def test_rename_table_with_an_index
+          add_index :test_models, :url
 
-        assert_equal 'http://www.foreverflying.com/octopus-black7.jpg', connection.select_value("SELECT url FROM octopi WHERE id=1")
-      end
+          rename_table :test_models, :octopi
 
-      def test_rename_table_with_an_index
-        add_index :test_models, :url
+          connection.execute "INSERT INTO octopi (#{connection.quote_column_name('id')}, #{connection.quote_column_name('url')}) VALUES (1, 'http://www.foreverflying.com/octopus-black7.jpg')"
 
-        rename_table :test_models, :octopi
+          assert_equal 'http://www.foreverflying.com/octopus-black7.jpg', connection.select_value("SELECT url FROM octopi WHERE id=1")
+          index = connection.indexes(:octopi).first
+          assert index.columns.include?("url")
+          assert_equal 'index_octopi_on_url', index.name
+        end
 
-        # Using explicit id in insert for compatibility across all databases
-        connection.enable_identity_insert("octopi", true) if current_adapter?(:SybaseAdapter)
-        connection.execute "INSERT INTO octopi (#{connection.quote_column_name('id')}, #{connection.quote_column_name('url')}) VALUES (1, 'http://www.foreverflying.com/octopus-black7.jpg')"
-        connection.enable_identity_insert("octopi", false) if current_adapter?(:SybaseAdapter)
+        def test_rename_table_does_not_rename_custom_named_index
+          add_index :test_models, :url, name: 'special_url_idx'
 
-        assert_equal 'http://www.foreverflying.com/octopus-black7.jpg', connection.select_value("SELECT url FROM octopi WHERE id=1")
-        index = connection.indexes(:octopi).first
-        assert index.columns.include?("url")
-        assert_equal 'index_octopi_on_url', index.name
-      end
+          rename_table :test_models, :octopi
 
-      def test_rename_table_does_not_rename_custom_named_index
-        add_index :test_models, :url, name: 'special_url_idx'
-
-        rename_table :test_models, :octopi
-
-        assert_equal ['special_url_idx'], connection.indexes(:octopi).map(&:name)
+          assert_equal ['special_url_idx'], connection.indexes(:octopi).map(&:name)
+        end
       end
 
       if current_adapter?(:PostgreSQLAdapter)
@@ -82,7 +76,18 @@ module ActiveRecord
 
           pk, seq = connection.pk_and_sequence_for('octopi')
 
-          assert_equal "octopi_#{pk}_seq", seq
+          assert_equal ConnectionAdapters::PostgreSQL::Name.new("public", "octopi_#{pk}_seq"), seq
+        end
+
+        def test_renaming_table_doesnt_attempt_to_rename_non_existent_sequences
+          enable_extension!('uuid-ossp', connection)
+          connection.create_table :cats, id: :uuid
+          assert_nothing_raised { rename_table :cats, :felines }
+          assert connection.table_exists? :felines
+        ensure
+          disable_extension!('uuid-ossp', connection)
+          connection.drop_table :cats, if_exists: true
+          connection.drop_table :felines, if_exists: true
         end
       end
     end

@@ -1,4 +1,3 @@
-require 'active_support/proxy_object'
 require 'active_support/core_ext/array/conversions'
 require 'active_support/core_ext/object/acts_like'
 
@@ -7,7 +6,7 @@ module ActiveSupport
   # Time#advance, respectively. It mainly supports the methods on Numeric.
   #
   #   1.month.ago       # equivalent to Time.now.advance(months: -1)
-  class Duration < ProxyObject
+  class Duration
     attr_accessor :value, :parts
 
     def initialize(value, parts) #:nodoc:
@@ -39,6 +38,10 @@ module ActiveSupport
     end
     alias :kind_of? :is_a?
 
+    def instance_of?(klass) # :nodoc:
+      Duration == klass || value.instance_of?(klass)
+    end
+
     # Returns +true+ if +other+ is also a Duration instance with the
     # same +value+, or if <tt>other == value</tt>.
     def ==(other)
@@ -49,8 +52,18 @@ module ActiveSupport
       end
     end
 
+    def to_s
+      @value.to_s
+    end
+
+    # Returns +true+ if +other+ is also a Duration instance, which has the
+    # same parts as this one.
     def eql?(other)
-      other.is_a?(Duration) && self == other
+      Duration === other && other.value.eql?(value)
+    end
+
+    def hash
+      @value.hash
     end
 
     def self.===(other) #:nodoc:
@@ -78,12 +91,18 @@ module ActiveSupport
         reduce(::Hash.new(0)) { |h,(l,r)| h[l] += r; h }.
         sort_by {|unit,  _ | [:years, :months, :days, :minutes, :seconds].index(unit)}.
         map     {|unit, val| "#{val} #{val == 1 ? unit.to_s.chop : unit.to_s}"}.
-        to_sentence(:locale => :en)
+        to_sentence(locale: ::I18n.default_locale)
     end
 
     def as_json(options = nil) #:nodoc:
       to_i
     end
+
+    def respond_to_missing?(method, include_private=false) #:nodoc:
+      @value.respond_to?(method, include_private)
+    end
+
+    delegate :<=>, to: :value
 
     protected
 
@@ -102,14 +121,6 @@ module ActiveSupport
       end
 
     private
-
-      # We define it as a workaround to Ruby 2.0.0-p353 bug.
-      # For more information, check rails/rails#13055.
-      # It should be dropped once a new Ruby patch-level
-      # release after 2.0.0-p353 happens.
-      def ===(other) #:nodoc:
-        value === other
-      end
 
       def method_missing(method, *args, &block) #:nodoc:
         value.send(method, *args, &block)

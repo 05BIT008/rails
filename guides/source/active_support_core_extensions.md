@@ -1,3 +1,5 @@
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+
 Active Support Core Extensions
 ==============================
 
@@ -162,7 +164,7 @@ Active Support provides `duplicable?` to programmatically query an object about 
 false.duplicable? # => false
 ```
 
-By definition all objects are `duplicable?` except `nil`, `false`, `true`, symbols, numbers, class, and module objects.
+By definition all objects are `duplicable?` except `nil`, `false`, `true`, symbols, numbers, class, module, and method objects.
 
 WARNING: Any class can disallow duplication by removing `dup` and `clone` or raising exceptions from them. Thus only `rescue` can tell whether a given arbitrary object is duplicable. `duplicable?` depends on the hard-coded list above, but it is much faster than `rescue`. Use it only if you know the hard-coded list is enough in your use case.
 
@@ -347,7 +349,7 @@ end
 we get:
 
 ```ruby
-current_user.to_query('user') # => user=357-john-smith
+current_user.to_query('user') # => "user=357-john-smith"
 ```
 
 This method escapes whatever is needed, both for the key and the value:
@@ -465,7 +467,7 @@ C.new(0, 1).instance_variable_names # => ["@x", "@y"]
 
 NOTE: Defined in `active_support/core_ext/object/instance_variables.rb`.
 
-### Silencing Warnings, Streams, and Exceptions
+### Silencing Warnings and Exceptions
 
 The methods `silence_warnings` and `enable_warnings` change the value of `$VERBOSE` accordingly for the duration of their block, and reset it afterwards:
 
@@ -473,26 +475,10 @@ The methods `silence_warnings` and `enable_warnings` change the value of `$VERBO
 silence_warnings { Object.const_set "RAILS_DEFAULT_LOGGER", logger }
 ```
 
-You can silence any stream while a block runs with `silence_stream`:
-
-```ruby
-silence_stream(STDOUT) do
-  # STDOUT is silent here
-end
-```
-
-The `quietly` method addresses the common use case where you want to silence STDOUT and STDERR, even in subprocesses:
-
-```ruby
-quietly { system 'bundle install' }
-```
-
-For example, the railties test suite uses that one in a few places to prevent command messages from being echoed intermixed with the progress status.
-
 Silencing exceptions is also possible with `suppress`. This method receives an arbitrary number of exception classes. If an exception is raised during the execution of the block and is `kind_of?` any of the arguments, `suppress` captures it and returns silently. Otherwise the exception is reraised:
 
 ```ruby
-# If the user is locked the increment is lost, no big deal.
+# If the user is locked, the increment is lost, no big deal.
 suppress(ActiveRecord::StaleObjectError) do
   current_user.increment! :visits
 end
@@ -572,12 +558,12 @@ NOTE: Defined in `active_support/core_ext/module/aliasing.rb`.
 
 #### `alias_attribute`
 
-Model attributes have a reader, a writer, and a predicate. You can alias a model attribute having the corresponding three methods defined for you in one shot. As in other aliasing methods, the new name is the first argument, and the old name is the second (my mnemonic is they go in the same order as if you did an assignment):
+Model attributes have a reader, a writer, and a predicate. You can alias a model attribute having the corresponding three methods defined for you in one shot. As in other aliasing methods, the new name is the first argument, and the old name is the second (one mnemonic is that they go in the same order as if you did an assignment):
 
 ```ruby
 class User < ActiveRecord::Base
-  # let me refer to the email column as "login",
-  # possibly meaningful for authentication code
+  # You can refer to the email column as "login".
+  # This can be meaningful for authentication code.
   alias_attribute :login, :email
 end
 ```
@@ -741,7 +727,7 @@ NOTE: Defined in `active_support/core_ext/module/introspection.rb`.
 
 #### Qualified Constant Names
 
-The standard methods `const_defined?`, `const_get` , and `const_set` accept
+The standard methods `const_defined?`, `const_get`, and `const_set` accept
 bare constant names. Active Support extends this API to be able to pass
 relative qualified constant names.
 
@@ -1011,7 +997,7 @@ self.default_params = {
 }.freeze
 ```
 
-They can be also accessed and overridden at the instance level.
+They can also be accessed and overridden at the instance level.
 
 ```ruby
 A.x = 1
@@ -1106,7 +1092,7 @@ end
 
 A model may find it useful to set `:instance_accessor` to `false` as a way to prevent mass-assignment from setting the attribute.
 
-NOTE: Defined in `active_support/core_ext/module/attribute_accessors.rb`. `active_support/core_ext/class/attribute_accessors.rb` is deprecated and will be removed in Ruby on Rails 4.2.
+NOTE: Defined in `active_support/core_ext/module/attribute_accessors.rb`.
 
 ### Subclasses & Descendants
 
@@ -1165,9 +1151,9 @@ Inserting data into HTML templates needs extra care. For example, you can't just
 
 #### Safe Strings
 
-Active Support has the concept of <i>(html) safe</i> strings. A safe string is one that is marked as being insertable into HTML as is. It is trusted, no matter whether it has been escaped or not.
+Active Support has the concept of _(html) safe_ strings. A safe string is one that is marked as being insertable into HTML as is. It is trusted, no matter whether it has been escaped or not.
 
-Strings are considered to be <i>unsafe</i> by default:
+Strings are considered to be _unsafe_ by default:
 
 ```ruby
 "".html_safe? # => false
@@ -1251,7 +1237,7 @@ Calling `dup` or `clone` on safe strings yields safe strings.
 The method `remove` will remove all occurrences of the pattern:
 
 ```ruby
-"Hello World".remove(/Hello /) => "World"
+"Hello World".remove(/Hello /) # => "World"
 ```
 
 There's also the destructive version `String#remove!`.
@@ -1268,7 +1254,7 @@ The method `squish` strips leading and trailing whitespace, and substitutes runs
 
 There's also the destructive version `String#squish!`.
 
-Note that it handles both ASCII and Unicode whitespace like mongolian vowel separator (U+180E).
+Note that it handles both ASCII and Unicode whitespace.
 
 NOTE: Defined in `active_support/core_ext/string/filters.rb`.
 
@@ -1307,6 +1293,38 @@ The option `:separator` can be a regexp:
 ```
 
 In above examples "dear" gets cut first, but then `:separator` prevents it.
+
+NOTE: Defined in `active_support/core_ext/string/filters.rb`.
+
+### `truncate_words`
+
+The method `truncate_words` returns a copy of its receiver truncated after a given number of words:
+
+```ruby
+"Oh dear! Oh dear! I shall be late!".truncate_words(4)
+# => "Oh dear! Oh dear!..."
+```
+
+Ellipsis can be customized with the `:omission` option:
+
+```ruby
+"Oh dear! Oh dear! I shall be late!".truncate_words(4, omission: '&hellip;')
+# => "Oh dear! Oh dear!&hellip;"
+```
+
+Pass a `:separator` to truncate the string at a natural break:
+
+```ruby
+"Oh dear! Oh dear! I shall be late!".truncate_words(3, separator: '!')
+# => "Oh dear! Oh dear! I shall be late..."
+```
+
+The option `:separator` can be a regexp:
+
+```ruby
+"Oh dear! Oh dear! I shall be late!".truncate_words(4, separator: /\s/)
+# => "Oh dear! Oh dear!..."
+```
 
 NOTE: Defined in `active_support/core_ext/string/filters.rb`.
 
@@ -1415,7 +1433,7 @@ Returns the substring of the string starting at position `position`:
 "hello".from(0)  # => "hello"
 "hello".from(2)  # => "llo"
 "hello".from(-2) # => "lo"
-"hello".from(10) # => "" if < 1.9, nil in 1.9
+"hello".from(10) # => nil
 ```
 
 NOTE: Defined in `active_support/core_ext/string/access.rb`.
@@ -1768,34 +1786,47 @@ NOTE: Defined in `active_support/core_ext/string/inflections.rb`.
 
 #### `humanize`
 
-The method `humanize` gives you a sensible name for display out of an attribute name. To do so it replaces underscores with spaces, removes any "_id" suffix, and capitalizes the first word:
+The method `humanize` tweaks an attribute name for display to end users.
+
+Specifically performs these transformations:
+
+  * Applies human inflection rules to the argument.
+  * Deletes leading underscores, if any.
+  * Removes a "_id" suffix if present.
+  * Replaces underscores with spaces, if any.
+  * Downcases all words except acronyms.
+  * Capitalizes the first word.
+
+The capitalization of the first word can be turned off by setting the
++:capitalize+ option to false (default is true).
 
 ```ruby
-"name".humanize           # => "Name"
-"author_id".humanize      # => "Author"
-"comments_count".humanize # => "Comments count"
-```
-
-The capitalization of the first word can be turned off by setting the optional parameter `capitalize` to false:
-
-```ruby
+"name".humanize                         # => "Name"
+"author_id".humanize                    # => "Author"
 "author_id".humanize(capitalize: false) # => "author"
+"comments_count".humanize               # => "Comments count"
+"_id".humanize                          # => "Id"
 ```
 
-The helper method `full_messages` uses `humanize` as a fallback to include attribute names:
+If "SSL" was defined to be an acronym:
+
+```ruby
+'ssl_error'.humanize # => "SSL error"
+```
+
+The helper method `full_messages` uses `humanize` as a fallback to include
+attribute names:
 
 ```ruby
 def full_messages
-  full_messages = []
+  map { |attribute, message| full_message(attribute, message) }
+end
 
-  each do |attribute, messages|
-    ...
-    attr_name = attribute.to_s.gsub('.', '_').humanize
-    attr_name = @base.class.human_attribute_name(attribute, default: attr_name)
-    ...
-  end
-
-  full_messages
+def full_message
+  ...
+  attr_name = attribute.to_s.tr('.', '_').humanize
+  attr_name = @base.class.human_attribute_name(attribute, default: attr_name)
+  ...
 end
 ```
 
@@ -1904,24 +1935,6 @@ as well as adding or subtracting their results from a Time object. For example:
 # equivalent to Time.current.advance(months: 4, years: 5)
 (4.months + 5.years).from_now
 ```
-
-While these methods provide precise calculation when used as in the examples above, care
-should be taken to note that this is not true if the result of `months', `years', etc is
-converted before use:
-
-```ruby
-# equivalent to 30.days.to_i.from_now
-1.month.to_i.from_now
-
-# equivalent to 365.25.days.to_f.from_now
-1.year.to_f.from_now
-```
-
-In such cases, Ruby's core [Date](http://ruby-doc.org/stdlib/libdoc/date/rdoc/Date.html) and
-[Time](http://ruby-doc.org/stdlib/libdoc/time/rdoc/Time.html) should be used for precision
-date and time arithmetic.
-
-NOTE: Defined in `active_support/core_ext/numeric/time.rb`.
 
 ### Formatting
 
@@ -2165,6 +2178,17 @@ The predicate `exclude?` tests whether a given object does **not** belong to the
 
 ```ruby
 to_visit << node if visited.exclude?(node)
+```
+
+NOTE: Defined in `active_support/core_ext/enumerable.rb`.
+
+### `without`
+
+The method `without` returns a copy of an enumerable with the specified elements
+removed:
+
+```ruby
+people.without("Aaron", "Todd")
 ```
 
 NOTE: Defined in `active_support/core_ext/enumerable.rb`.
@@ -2846,6 +2870,20 @@ The method `assert_valid_keys` receives an arbitrary number of arguments, and ch
 Active Record does not accept unknown options when building associations, for example. It implements that control via `assert_valid_keys`.
 
 NOTE: Defined in `active_support/core_ext/hash/keys.rb`.
+
+### Working with Values
+
+#### `transform_values` && `transform_values!`
+
+The method `transform_values` accepts a block and returns a hash that has applied the block operations to each of the values in the receiver.
+
+```ruby
+{ nil => nil, 1 => 1, :x => :a }.transform_values { |value| value.to_s.upcase }
+# => {nil=>"", 1=>"1", :x=>"A"}
+```
+There's also the bang variant `transform_values!` that applies the block operations to values in the very receiver.
+
+NOTE: Defined in `active_support/core_text/hash/transform_values.rb`.
 
 ### Slicing
 
@@ -3657,9 +3695,9 @@ t.advance(seconds: 1)
 
 #### `Time.current`
 
-Active Support defines `Time.current` to be today in the current time zone. That's like `Time.now`, except that it honors the user time zone, if defined. It also defines `Time.yesterday` and `Time.tomorrow`, and the instance predicates `past?`, `today?`, and `future?`, all of them relative to `Time.current`.
+Active Support defines `Time.current` to be today in the current time zone. That's like `Time.now`, except that it honors the user time zone, if defined. It also defines the instance predicates `past?`, `today?`, and `future?`, all of them relative to `Time.current`.
 
-When making Time comparisons using methods which honor the user time zone, make sure to use `Time.current` and not `Time.now`. There are cases where the user time zone might be in the future compared to the system time zone, which `Time.today` uses by default. This means `Time.now` may equal `Time.yesterday`.
+When making Time comparisons using methods which honor the user time zone, make sure to use `Time.current` instead of `Time.now`. There are cases where the user time zone might be in the future compared to the system time zone, which `Time.now` uses by default. This means `Time.now.to_date` may equal `Date.yesterday`.
 
 #### `all_day`, `all_week`, `all_month`, `all_quarter` and `all_year`
 
@@ -3770,50 +3808,6 @@ WARNING. If the argument is an `IO` it needs to respond to `rewind` to be able t
 
 NOTE: Defined in `active_support/core_ext/marshal.rb`.
 
-Extensions to `Logger`
-----------------------
-
-### `around_[level]`
-
-Takes two arguments, a `before_message` and `after_message` and calls the current level method on the `Logger` instance, passing in the `before_message`, then the specified message, then the `after_message`:
-
-```ruby
-logger = Logger.new("log/development.log")
-logger.around_info("before", "after") { |logger| logger.info("during") }
-```
-
-### `silence`
-
-Silences every log level lesser to the specified one for the duration of the given block. Log level orders are: debug, info, error and fatal.
-
-```ruby
-logger = Logger.new("log/development.log")
-logger.silence(Logger::INFO) do
-  logger.debug("In space, no one can hear you scream.")
-  logger.info("Scream all you want, small mailman!")
-end
-```
-
-### `datetime_format=`
-
-Modifies the datetime format output by the formatter class associated with this logger. If the formatter class does not have a `datetime_format` method then this is ignored.
-
-```ruby
-class Logger::FormatWithTime < Logger::Formatter
-  cattr_accessor(:datetime_format) { "%Y%m%d%H%m%S" }
-
-  def self.call(severity, timestamp, progname, msg)
-    "#{timestamp.strftime(datetime_format)} -- #{String === msg ? msg : msg.inspect}\n"
-  end
-end
-
-logger = Logger.new("log/development.log")
-logger.formatter = Logger::FormatWithTime
-logger.info("<- is the current time")
-```
-
-NOTE: Defined in `active_support/core_ext/logger.rb`.
-
 Extensions to `NameError`
 -------------------------
 
@@ -3823,14 +3817,14 @@ The name may be given as a symbol or string. A symbol is tested against the bare
 
 TIP: A symbol can represent a fully-qualified constant name as in `:"ActiveRecord::Base"`, so the behavior for symbols is defined for convenience, not because it has to be that way technically.
 
-For example, when an action of `PostsController` is called Rails tries optimistically to use `PostsHelper`. It is OK that the helper module does not exist, so if an exception for that constant name is raised it should be silenced. But it could be the case that `posts_helper.rb` raises a `NameError` due to an actual unknown constant. That should be reraised. The method `missing_name?` provides a way to distinguish both cases:
+For example, when an action of `ArticlesController` is called Rails tries optimistically to use `ArticlesHelper`. It is OK that the helper module does not exist, so if an exception for that constant name is raised it should be silenced. But it could be the case that `articles_helper.rb` raises a `NameError` due to an actual unknown constant. That should be reraised. The method `missing_name?` provides a way to distinguish both cases:
 
 ```ruby
 def default_helper_module!
   module_name = name.sub(/Controller$/, '')
   module_path = module_name.underscore
   helper module_path
-rescue MissingSourceFile => e
+rescue LoadError => e
   raise e unless e.is_missing? "helpers/#{module_path}_helper"
 rescue NameError => e
   raise e unless e.missing_name? "#{module_name}Helper"
@@ -3842,18 +3836,18 @@ NOTE: Defined in `active_support/core_ext/name_error.rb`.
 Extensions to `LoadError`
 -------------------------
 
-Active Support adds `is_missing?` to `LoadError`, and also assigns that class to the constant `MissingSourceFile` for backwards compatibility.
+Active Support adds `is_missing?` to `LoadError`.
 
 Given a path name `is_missing?` tests whether the exception was raised due to that particular file (except perhaps for the ".rb" extension).
 
-For example, when an action of `PostsController` is called Rails tries to load `posts_helper.rb`, but that file may not exist. That's fine, the helper module is not mandatory so Rails silences a load error. But it could be the case that the helper module does exist and in turn requires another library that is missing. In that case Rails must reraise the exception. The method `is_missing?` provides a way to distinguish both cases:
+For example, when an action of `ArticlesController` is called Rails tries to load `articles_helper.rb`, but that file may not exist. That's fine, the helper module is not mandatory so Rails silences a load error. But it could be the case that the helper module does exist and in turn requires another library that is missing. In that case Rails must reraise the exception. The method `is_missing?` provides a way to distinguish both cases:
 
 ```ruby
 def default_helper_module!
   module_name = name.sub(/Controller$/, '')
   module_path = module_name.underscore
   helper module_path
-rescue MissingSourceFile => e
+rescue LoadError => e
   raise e unless e.is_missing? "helpers/#{module_path}_helper"
 rescue NameError => e
   raise e unless e.missing_name? "#{module_name}Helper"

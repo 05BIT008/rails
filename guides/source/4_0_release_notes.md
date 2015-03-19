@@ -1,3 +1,5 @@
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+
 Ruby on Rails 4.0 Release Notes
 ===============================
 
@@ -8,7 +10,10 @@ Highlights in Rails 4.0:
 * Turbolinks
 * Russian Doll Caching
 
-These release notes cover only the major changes. To know about various bug fixes and changes, please refer to the change logs or check out the [list of commits](https://github.com/rails/rails/commits/master) in the main Rails repository on GitHub.
+These release notes cover only the major changes. To learn about various bug
+fixes and changes, please refer to the change logs or check out the [list of
+commits](https://github.com/rails/rails/commits/4-0-stable) in the main Rails
+repository on GitHub.
 
 --------------------------------------------------------------------------------
 
@@ -68,7 +73,7 @@ Major Features
  * **Strong parameters** ([commit](https://github.com/rails/rails/commit/a8f6d5c6450a7fe058348a7f10a908352bb6c7fc)) - Only allow whitelisted parameters to update model objects (`params.permit(:title, :text)`).
  * **Routing concerns** ([commit](https://github.com/rails/rails/commit/0dd24728a088fcb4ae616bb5d62734aca5276b1b)) - In the routing DSL, factor out common subroutes (`comments` from `/posts/1/comments` and `/videos/1/comments`).
  * **ActionController::Live** ([commit](https://github.com/rails/rails/commit/af0a9f9eefaee3a8120cfd8d05cbc431af376da3)) - Stream JSON with `response.stream`.
- * **Declarative ETags** ([commit](https://github.com/rails/rails/commit/ed5c938fa36995f06d4917d9543ba78ed506bb8d)) - Add controller-level etag additions that will be part of the action etag computation
+ * **Declarative ETags** ([commit](https://github.com/rails/rails/commit/ed5c938fa36995f06d4917d9543ba78ed506bb8d)) - Add controller-level etag additions that will be part of the action etag computation.
  * **[Russian doll caching](http://37signals.com/svn/posts/3113-how-key-based-cache-expiration-works)** ([commit](https://github.com/rails/rails/commit/4154bf012d2bec2aae79e4a49aa94a70d3e91d49)) - Cache nested fragments of views. Each fragment expires based on a set of dependencies (a cache key). The cache key is usually a template version number and a model object.
  * **Turbolinks** ([commit](https://github.com/rails/rails/commit/e35d8b18d0649c0ecc58f6b73df6b3c8d0c6bb74)) - Serve only one initial HTML page. When the user navigates to another page, use pushState to update the URL and use AJAX to update the title and body.
  * **Decouple ActionView from ActionController** ([commit](https://github.com/rails/rails/commit/78b0934dd1bb84e8f093fb8ef95ca99b297b51cd)) - ActionView was decoupled from ActionPack and will be moved to a separated gem in Rails 4.1.
@@ -82,7 +87,10 @@ Major Features
  * **Support for specifying transaction isolation level** ([commit](https://github.com/rails/rails/commit/392eeecc11a291e406db927a18b75f41b2658253)) - Choose whether repeatable reads or improved performance (less locking) is more important.
  * **Dalli** ([commit](https://github.com/rails/rails/commit/82663306f428a5bbc90c511458432afb26d2f238)) - Use Dalli memcache client for the memcache store.
  * **Notifications start &amp; finish** ([commit](https://github.com/rails/rails/commit/f08f8750a512f741acb004d0cebe210c5f949f28)) - Active Support instrumentation reports start and finish notifications to subscribers.
- * **Thread safe by default** ([commit](https://github.com/rails/rails/commit/5d416b907864d99af55ebaa400fff217e17570cd)) - Rails can run in threaded app servers without additional configuration. Note: Check that the gems you are using are threadsafe.
+ * **Thread safe by default** ([commit](https://github.com/rails/rails/commit/5d416b907864d99af55ebaa400fff217e17570cd)) - Rails can run in threaded app servers without additional configuration.
+
+NOTE: Check that the gems you are using are threadsafe.
+
  * **PATCH verb** ([commit](https://github.com/rails/rails/commit/eed9f2539e3ab5a68e798802f464b8e4e95e619e)) - In Rails, PATCH replaces PUT. PATCH is used for partial updates of resources.
 
 ### Security
@@ -176,7 +184,7 @@ Please refer to the [Changelog](https://github.com/rails/rails/blob/4-0-stable/a
 * `String#to_date` now raises `ArgumentError: invalid date` instead of `NoMethodError: undefined method 'div' for nil:NilClass`
   when given an invalid date. It is now the same as `Date.parse`, and it accepts more invalid dates than 3.x, such as:
 
-  ```
+  ```ruby
   # ActiveSupport 3.x
   "asdf".to_date # => NoMethodError: undefined method `div' for nil:NilClass
   "333".to_date # => NoMethodError: undefined method `div' for nil:NilClass
@@ -226,11 +234,11 @@ Please refer to the [Changelog](https://github.com/rails/rails/blob/4-0-stable/a
       The method `change_table` is also reversible, as long as its block doesn't call `remove`, `change` or `change_default`
 
     * New method `reversible` makes it possible to specify code to be run when migrating up or down.
-      See the [Guide on Migration](https://github.com/rails/rails/blob/master/guides/source/migrations.md#using-the-reversible-method)
+      See the [Guide on Migration](https://github.com/rails/rails/blob/master/guides/source/active_record_migrations.md#using-reversible)
 
     * New method `revert` will revert a whole migration or the given block.
       If migrating down, the given migration / block is run normally.
-      See the [Guide on Migration](https://github.com/rails/rails/blob/master/guides/source/migrations.md#reverting-previous-migrations)
+      See the [Guide on Migration](https://github.com/rails/rails/blob/master/guides/source/active_record_migrations.md#reverting-previous-migrations)
 
 * Adds PostgreSQL array type support. Any datatype can be used to create an array column, with full migration and schema dumper support.
 

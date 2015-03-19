@@ -1,4 +1,3 @@
-# encoding: utf-8
 require 'date'
 require 'abstract_unit'
 require 'inflector_test_cases'
@@ -10,10 +9,12 @@ require 'active_support/time'
 require 'active_support/core_ext/string/strip'
 require 'active_support/core_ext/string/output_safety'
 require 'active_support/core_ext/string/indent'
+require 'time_zone_test_helpers'
 
 class StringInflectionsTest < ActiveSupport::TestCase
   include InflectorTestCases
   include ConstantizeTestCases
+  include TimeZoneTestHelpers
 
   def test_strip_heredoc_on_an_empty_string
     assert_equal '', ''.strip_heredoc
@@ -187,21 +188,21 @@ class StringInflectionsTest < ActiveSupport::TestCase
   end
 
   def test_string_squish
-    original = %{\u180E\u180E A string surrounded by unicode mongolian vowel separators,
-      with tabs(\t\t), newlines(\n\n), unicode nextlines(\u0085\u0085) and many spaces(  ). \u180E\u180E}
+    original = %{\u205f\u3000 A string surrounded by various unicode spaces,
+      with tabs(\t\t), newlines(\n\n), unicode nextlines(\u0085\u0085) and many spaces(  ). \u00a0\u2007}
 
-    expected = "A string surrounded by unicode mongolian vowel separators, " +
+    expected = "A string surrounded by various unicode spaces, " +
       "with tabs( ), newlines( ), unicode nextlines( ) and many spaces( )."
 
     # Make sure squish returns what we expect:
-    assert_equal original.squish,  expected
+    assert_equal expected, original.squish
     # But doesn't modify the original string:
-    assert_not_equal original, expected
+    assert_not_equal expected, original
 
     # Make sure squish! returns what we expect:
-    assert_equal original.squish!, expected
+    assert_equal expected, original.squish!
     # And changes the original string:
-    assert_equal original, expected
+    assert_equal expected, original
   end
 
   def test_string_inquiry
@@ -214,17 +215,47 @@ class StringInflectionsTest < ActiveSupport::TestCase
     assert_equal "Hello Wor...", "Hello World!!".truncate(12)
   end
 
-  def test_truncate_with_omission_and_seperator
+  def test_truncate_with_omission_and_separator
     assert_equal "Hello[...]", "Hello World!".truncate(10, :omission => "[...]")
     assert_equal "Hello[...]", "Hello Big World!".truncate(13, :omission => "[...]", :separator => ' ')
     assert_equal "Hello Big[...]", "Hello Big World!".truncate(14, :omission => "[...]", :separator => ' ')
     assert_equal "Hello Big[...]", "Hello Big World!".truncate(15, :omission => "[...]", :separator => ' ')
   end
 
-  def test_truncate_with_omission_and_regexp_seperator
+  def test_truncate_with_omission_and_regexp_separator
     assert_equal "Hello[...]", "Hello Big World!".truncate(13, :omission => "[...]", :separator => /\s/)
     assert_equal "Hello Big[...]", "Hello Big World!".truncate(14, :omission => "[...]", :separator => /\s/)
     assert_equal "Hello Big[...]", "Hello Big World!".truncate(15, :omission => "[...]", :separator => /\s/)
+  end
+
+  def test_truncate_words
+    assert_equal "Hello Big World!", "Hello Big World!".truncate_words(3)
+    assert_equal "Hello Big...", "Hello Big World!".truncate_words(2)
+  end
+
+  def test_truncate_words_with_omission
+    assert_equal "Hello Big World!", "Hello Big World!".truncate_words(3, :omission => "[...]")
+    assert_equal "Hello Big[...]", "Hello Big World!".truncate_words(2, :omission => "[...]")
+  end
+
+  def test_truncate_words_with_separator
+    assert_equal "Hello<br>Big<br>World!...", "Hello<br>Big<br>World!<br>".truncate_words(3, :separator => '<br>')
+    assert_equal "Hello<br>Big<br>World!", "Hello<br>Big<br>World!".truncate_words(3, :separator => '<br>')
+    assert_equal "Hello\n<br>Big...", "Hello\n<br>Big<br>Wide<br>World!".truncate_words(2, :separator => '<br>')
+  end
+
+  def test_truncate_words_with_separator_and_omission
+    assert_equal "Hello<br>Big<br>World![...]", "Hello<br>Big<br>World!<br>".truncate_words(3, :omission => "[...]", :separator => '<br>')
+    assert_equal "Hello<br>Big<br>World!", "Hello<br>Big<br>World!".truncate_words(3, :omission => "[...]", :separator => '<br>')
+  end
+
+  def test_truncate_words_with_complex_string
+    Timeout.timeout(10) do
+      complex_string = "aa aa aaa aa aaa aaa aaa aa aaa aaa aaa aaa aaa aaa aaa aaa aaa aaa aaaa aaaaa aaaaa aaaaaa aa aa aa aaa aa  aaa aa aa aa aa a aaa aaa \n a aaa <<s"
+      assert_equal complex_string.truncate_words(80), complex_string
+    end
+  rescue Timeout::Error
+    assert false
   end
 
   def test_truncate_multibyte
@@ -237,20 +268,32 @@ class StringInflectionsTest < ActiveSupport::TestCase
   end
 
   def test_remove
-    assert_equal "Summer", "Fast Summer".remove(/Fast /)
-    assert_equal "Summer", "Fast Summer".remove!(/Fast /)
+    original = "This is a good day to die"
+    assert_equal "This is a good day", original.remove(" to die")
+    assert_equal "This is a good day", original.remove(" to ", /die/)
+    assert_equal "This is a good day to die", original
+  end
+
+  def test_remove_for_multiple_occurrences
+    original = "This is a good day to die to die"
+    assert_equal "This is a good day", original.remove(" to die")
+    assert_equal "This is a good day to die to die", original
+  end
+
+  def test_remove!
+    original = "This is a very good day to die"
+    assert_equal "This is a good day to die", original.remove!(" very")
+    assert_equal "This is a good day to die", original
+    assert_equal "This is a good day", original.remove!(" to ", /die/)
+    assert_equal "This is a good day", original
   end
 
   def test_constantize
-    run_constantize_tests_on do |string|
-      string.constantize
-    end
+    run_constantize_tests_on(&:constantize)
   end
 
   def test_safe_constantize
-    run_safe_constantize_tests_on do |string|
-      string.safe_constantize
-    end
+    run_safe_constantize_tests_on(&:safe_constantize)
   end
 end
 
@@ -354,6 +397,8 @@ class StringAccessTest < ActiveSupport::TestCase
 end
 
 class StringConversionsTest < ActiveSupport::TestCase
+  include TimeZoneTestHelpers
+
   def test_string_to_time
     with_env_tz "Europe/Moscow" do
       assert_equal Time.utc(2005, 2, 27, 23, 50), "2005-02-27 23:50".to_time(:utc)
@@ -379,11 +424,11 @@ class StringConversionsTest < ActiveSupport::TestCase
   end
 
   def test_partial_string_to_time
-    with_env_tz "Europe/Moscow" do
+    with_env_tz "Europe/Moscow" do # use timezone which does not observe DST.
       now = Time.now
       assert_equal Time.local(now.year, now.month, now.day, 23, 50), "23:50".to_time
       assert_equal Time.utc(now.year, now.month, now.day, 23, 50), "23:50".to_time(:utc)
-      assert_equal Time.local(now.year, now.month, now.day, 18, 50), "13:50 -0100".to_time
+      assert_equal Time.local(now.year, now.month, now.day, 17, 50), "13:50 -0100".to_time
       assert_equal Time.utc(now.year, now.month, now.day, 23, 50), "22:50 -0100".to_time(:utc)
     end
   end
@@ -523,14 +568,6 @@ class StringConversionsTest < ActiveSupport::TestCase
     assert_nil "".to_date
     assert_equal Date.new(Date.today.year, 2, 3), "Feb 3rd".to_date
   end
-
-  protected
-    def with_env_tz(new_tz = 'US/Eastern')
-      old_tz, ENV['TZ'] = ENV['TZ'], new_tz
-      yield
-    ensure
-      old_tz ? ENV['TZ'] = old_tz : ENV.delete('TZ')
-    end
 end
 
 class StringBehaviourTest < ActiveSupport::TestCase
@@ -635,16 +672,6 @@ class OutputSafetyTest < ActiveSupport::TestCase
     other = "other".html_safe
     other.prepend "<foo>"
     assert other.html_safe?
-    assert_equal other, "&lt;foo&gt;other"
-  end
-
-  test "Deprecated #prepend! method is still present" do
-    other = "other".html_safe
-
-    assert_deprecated do
-      other.prepend! "<foo>"
-    end
-
     assert_equal other, "&lt;foo&gt;other"
   end
 
@@ -757,6 +784,14 @@ class OutputSafetyTest < ActiveSupport::TestCase
   test "ERB::Util.html_escape should not escape safe strings" do
     string = "<b>hello</b>".html_safe
     assert_equal string, ERB::Util.html_escape(string)
+  end
+
+  test "ERB::Util.html_escape_once only escapes once" do
+    string = '1 < 2 &amp; 3'
+    escaped_string = "1 &lt; 2 &amp; 3"
+
+    assert_equal escaped_string, ERB::Util.html_escape_once(string)
+    assert_equal escaped_string, ERB::Util.html_escape_once(escaped_string)
   end
 end
 

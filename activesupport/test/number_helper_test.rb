@@ -1,5 +1,6 @@
 require 'abstract_unit'
 require 'active_support/number_helper'
+require 'active_support/core_ext/string/output_safety'
 
 module ActiveSupport
   module NumberHelper
@@ -82,6 +83,14 @@ module ActiveSupport
           assert_equal("98a%", number_helper.number_to_percentage("98a"))
           assert_equal("NaN%", number_helper.number_to_percentage(Float::NAN))
           assert_equal("Inf%", number_helper.number_to_percentage(Float::INFINITY))
+          assert_equal("NaN%", number_helper.number_to_percentage(Float::NAN, precision: 0))
+          assert_equal("Inf%", number_helper.number_to_percentage(Float::INFINITY, precision: 0))
+          assert_equal("NaN%", number_helper.number_to_percentage(Float::NAN, precision: 1))
+          assert_equal("Inf%", number_helper.number_to_percentage(Float::INFINITY, precision: 1))
+          assert_equal("1000%", number_helper.number_to_percentage(1000, precision: nil))
+          assert_equal("1000%", number_helper.number_to_percentage(1000, precision: nil))
+          assert_equal("1000.1%", number_helper.number_to_percentage(1000.1, precision: nil))
+          assert_equal("-0.13 %", number_helper.number_to_percentage("-0.13", precision: nil, format: "%n %"))
         end
       end
 
@@ -97,6 +106,7 @@ module ActiveSupport
           assert_equal("123,456,789.78901", number_helper.number_to_delimited(123456789.78901))
           assert_equal("0.78901", number_helper.number_to_delimited(0.78901))
           assert_equal("123,456.78", number_helper.number_to_delimited("123456.78"))
+          assert_equal("123,456.78", number_helper.number_to_delimited("123456.78".html_safe))
         end
       end
 
@@ -132,6 +142,8 @@ module ActiveSupport
           assert_equal("111.23460000000000000000", number_helper.number_to_rounded('111.2346', :precision => 20))
           assert_equal("111.23460000000000000000", number_helper.number_to_rounded(BigDecimal(111.2346, Float::DIG), :precision => 20))
           assert_equal("111.2346" + "0"*96, number_helper.number_to_rounded('111.2346', :precision => 100))
+          assert_equal("111.2346", number_helper.number_to_rounded(Rational(1112346, 10000), :precision => 4))
+          assert_equal('0.00', number_helper.number_to_rounded(Rational(0, 1), :precision => 2))
         end
       end
 
@@ -172,6 +184,7 @@ module ActiveSupport
           assert_equal "9775.0000000000000000", number_helper.number_to_rounded(BigDecimal(9775), :precision => 20, :significant => true )
           assert_equal "9775.0000000000000000", number_helper.number_to_rounded("9775", :precision => 20, :significant => true )
           assert_equal "9775." + "0"*96, number_helper.number_to_rounded("9775", :precision => 100, :significant => true )
+          assert_equal("97.7", number_helper.number_to_rounded(Rational(9772, 100), :precision => 3, :significant => true))
         end
       end
 

@@ -15,6 +15,7 @@ require 'models/essay'
 require 'models/owner'
 require 'models/post'
 require 'models/comment'
+require 'models/categorization'
 
 class HasOneThroughAssociationsTest < ActiveRecord::TestCase
   fixtures :member_types, :members, :clubs, :memberships, :sponsors, :organizations, :minivans,
@@ -43,6 +44,20 @@ class HasOneThroughAssociationsTest < ActiveRecord::TestCase
     assert_equal clubs(:moustache_club), new_member.club
     assert new_member.save
     assert_equal clubs(:moustache_club), new_member.club
+  end
+
+  def test_creating_association_sets_both_parent_ids_for_new
+    member = Member.new(name: 'Sean Griffin')
+    club = Club.new(name: 'Da Club')
+
+    member.club = club
+
+    member.save!
+
+    assert member.id
+    assert club.id
+    assert_equal member.id, member.current_membership.member_id
+    assert_equal club.id, member.current_membership.club_id
   end
 
   def test_replace_target_record
@@ -272,6 +287,12 @@ class HasOneThroughAssociationsTest < ActiveRecord::TestCase
   def test_has_one_through_many_raises_exception
     assert_raise(ActiveRecord::HasOneThroughCantAssociateThroughCollection) do
       members(:groucho).club_through_many
+    end
+  end
+
+  def test_has_one_through_polymorphic_association
+    assert_raise(ActiveRecord::HasOneAssociationPolymorphicThroughError) do
+      @member.premium_club
     end
   end
 

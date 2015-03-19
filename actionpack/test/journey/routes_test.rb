@@ -3,9 +3,13 @@ require 'abstract_unit'
 module ActionDispatch
   module Journey
     class TestRoutes < ActiveSupport::TestCase
+      setup do
+        @routes = Routes.new
+      end
+
       def test_clear
         routes = Routes.new
-        exp    = Router::Strexp.new '/foo(/:id)', {}, ['/.?']
+        exp    = Router::Strexp.build '/foo(/:id)', {}, ['/.?']
         path   = Path::Pattern.new exp
         requirements = { :hello => /world/ }
 
@@ -18,7 +22,7 @@ module ActionDispatch
 
       def test_ast
         routes = Routes.new
-        path   = Path::Pattern.new '/hello'
+        path   = Path::Pattern.from_string '/hello'
 
         routes.add_route nil, path, {}, {}, {}
         ast = routes.ast
@@ -28,7 +32,7 @@ module ActionDispatch
 
       def test_simulator_changes
         routes = Routes.new
-        path   = Path::Pattern.new '/hello'
+        path   = Path::Pattern.from_string '/hello'
 
         routes.add_route nil, path, {}, {}, {}
         sim = routes.simulator
@@ -36,12 +40,28 @@ module ActionDispatch
         assert_not_equal sim, routes.simulator
       end
 
+      def test_partition_route
+        path   = Path::Pattern.from_string '/hello'
+
+        anchored_route = @routes.add_route nil, path, {}, {}, {}
+        assert_equal [anchored_route], @routes.anchored_routes
+        assert_equal [], @routes.custom_routes
+
+        strexp = Router::Strexp.build(
+          "/hello/:who", { who: /\d/ }, ['/', '.', '?']
+        )
+        path  = Path::Pattern.new strexp
+
+        custom_route = @routes.add_route nil, path, {}, {}, {}
+        assert_equal [custom_route], @routes.custom_routes
+        assert_equal [anchored_route], @routes.anchored_routes
+      end
+
       def test_first_name_wins
-        #def add_route app, path, conditions, defaults, name = nil
         routes = Routes.new
 
-        one   = Path::Pattern.new '/hello'
-        two   = Path::Pattern.new '/aaron'
+        one   = Path::Pattern.from_string '/hello'
+        two   = Path::Pattern.from_string '/aaron'
 
         routes.add_route nil, one, {}, {}, 'aaron'
         routes.add_route nil, two, {}, {}, 'aaron'

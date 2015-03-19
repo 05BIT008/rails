@@ -1,15 +1,20 @@
 require "cases/helper"
-require 'models/author'
-require 'models/price_estimate'
-require 'models/treasure'
-require 'models/post'
-require 'models/comment'
-require 'models/edge'
-require 'models/topic'
+require "models/author"
+require "models/binary"
+require "models/cake_designer"
+require "models/chef"
+require "models/comment"
+require "models/edge"
+require "models/essay"
+require "models/post"
+require "models/price_estimate"
+require "models/topic"
+require "models/treasure"
+require "models/vertex"
 
 module ActiveRecord
   class WhereTest < ActiveRecord::TestCase
-    fixtures :posts, :edges, :authors
+    fixtures :posts, :edges, :authors, :binaries, :essays
 
     def test_where_copies_bind_params
       author = authors(:david)
@@ -22,6 +27,24 @@ module ActiveRecord
         assert_equal author, post.author
         assert_not_equal 1, post.id
       }
+    end
+
+    def test_where_copies_bind_params_in_the_right_order
+      author = authors(:david)
+      posts = author.posts.where.not(id: 1)
+      joined = Post.where(id: posts, title: posts.first.title)
+
+      assert_equal joined, [posts.first]
+    end
+
+    def test_where_copies_arel_bind_params
+      chef = Chef.create!
+      CakeDesigner.create!(chef: chef)
+
+      cake_designers = CakeDesigner.joins(:chef).where(chefs: { id: chef.id })
+      chefs = Chef.where(employable: cake_designers)
+
+      assert_equal [chef], chefs.to_a
     end
 
     def test_rewhere_on_root
@@ -58,6 +81,15 @@ module ActiveRecord
       actual   = Post.where(comments: { parent: parent }).joins(:comments)
 
       assert_equal expected.to_sql, actual.to_sql
+    end
+
+    def test_belongs_to_nested_where_with_relation
+      author = authors(:david)
+
+      expected = Author.where(id: author ).joins(:posts)
+      actual   = Author.where(posts: { author_id: Author.where(id: author.id) }).joins(:posts)
+
+      assert_equal expected.to_a, actual.to_a
     end
 
     def test_polymorphic_shallow_where
@@ -178,6 +210,71 @@ module ActiveRecord
       [[], {}, nil, ""].each do |blank|
         assert_equal 4, Edge.where(blank).order("sink_id").to_a.size
       end
+    end
+
+    def test_where_with_integer_for_string_column
+      count = Post.where(:title => 0).count
+      assert_equal 0, count
+    end
+
+    def test_where_with_float_for_string_column
+      count = Post.where(:title => 0.0).count
+      assert_equal 0, count
+    end
+
+    def test_where_with_boolean_for_string_column
+      count = Post.where(:title => false).count
+      assert_equal 0, count
+    end
+
+    def test_where_with_decimal_for_string_column
+      count = Post.where(:title => BigDecimal.new(0)).count
+      assert_equal 0, count
+    end
+
+    def test_where_with_duration_for_string_column
+      count = Post.where(:title => 0.seconds).count
+      assert_equal 0, count
+    end
+
+    def test_where_with_integer_for_binary_column
+      count = Binary.where(:data => 0).count
+      assert_equal 0, count
+    end
+
+    def test_where_on_association_with_custom_primary_key
+      author = authors(:david)
+      essay = Essay.where(writer: author).first
+
+      assert_equal essays(:david_modest_proposal), essay
+    end
+
+    def test_where_on_association_with_custom_primary_key_with_relation
+      author = authors(:david)
+      essay = Essay.where(writer: Author.where(id: author.id)).first
+
+      assert_equal essays(:david_modest_proposal), essay
+    end
+
+    def test_where_on_association_with_relation_performs_subselect_not_two_queries
+      author = authors(:david)
+
+      assert_queries(1) do
+        Essay.where(writer: Author.where(id: author.id)).to_a
+      end
+    end
+
+    def test_where_on_association_with_custom_primary_key_with_array_of_base
+      author = authors(:david)
+      essay = Essay.where(writer: [author]).first
+
+      assert_equal essays(:david_modest_proposal), essay
+    end
+
+    def test_where_on_association_with_custom_primary_key_with_array_of_ids
+      essay = Essay.where(writer: ["David"]).first
+
+      assert_equal essays(:david_modest_proposal), essay
     end
   end
 end

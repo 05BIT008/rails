@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2004-2014 David Heinemeier Hansson
+# Copyright (c) 2004-2015 David Heinemeier Hansson
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -27,10 +27,12 @@ require 'active_model'
 require 'arel'
 
 require 'active_record/version'
+require 'active_record/attribute_set'
 
 module ActiveRecord
   extend ActiveSupport::Autoload
 
+  autoload :Attribute
   autoload :Base
   autoload :Callbacks
   autoload :Core
@@ -41,6 +43,7 @@ module ActiveRecord
   autoload :Explain
   autoload :Inheritance
   autoload :Integration
+  autoload :LegacyYamlAdapter
   autoload :Migration
   autoload :Migrator, 'active_record/migration'
   autoload :ModelSchema
@@ -60,10 +63,13 @@ module ActiveRecord
   autoload :Serialization
   autoload :StatementCache
   autoload :Store
+  autoload :Suppressor
+  autoload :TableMetadata
   autoload :Timestamp
   autoload :Transactions
   autoload :Translation
   autoload :Validations
+  autoload :SecureToken
 
   eager_autoload do
     autoload :ActiveRecordError, 'active_record/errors'
@@ -95,6 +101,7 @@ module ActiveRecord
 
   module Coders
     autoload :YAMLColumn, 'active_record/coders/yaml_column'
+    autoload :JSON, 'active_record/coders/json'
   end
 
   module AttributeMethods

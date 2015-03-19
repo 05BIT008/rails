@@ -42,12 +42,13 @@ module ActiveSupport
     # Containing helpers that helps you test passage of time.
     module TimeHelpers
       # Changes current time to the time in the future or in the past by a given time difference by
-      # stubbing +Time.now+ and +Date.today+.
+      # stubbing +Time.now+, +Date.today+, and +DateTime.now+.
       #
-      #   Time.current # => Sat, 09 Nov 2013 15:34:49 EST -05:00
+      #   Time.current     # => Sat, 09 Nov 2013 15:34:49 EST -05:00
       #   travel 1.day
-      #   Time.current # => Sun, 10 Nov 2013 15:34:49 EST -05:00
-      #   Date.current # => Sun, 10 Nov 2013
+      #   Time.current     # => Sun, 10 Nov 2013 15:34:49 EST -05:00
+      #   Date.current     # => Sun, 10 Nov 2013
+      #   DateTime.current # => Sun, 10 Nov 2013 15:34:49 -0500
       #
       # This method also accepts a block, which will return the current time back to its original
       # state at the end of the block:
@@ -61,13 +62,14 @@ module ActiveSupport
         travel_to Time.now + duration, &block
       end
 
-      # Changes current time to the given time by stubbing +Time.now+ and
-      # +Date.today+ to return the time or date passed into this method.
+      # Changes current time to the given time by stubbing +Time.now+,
+      # +Date.today+, and +DateTime.now+ to return the time or date passed into this method.
       #
-      #   Time.current # => Sat, 09 Nov 2013 15:34:49 EST -05:00
+      #   Time.current     # => Sat, 09 Nov 2013 15:34:49 EST -05:00
       #   travel_to Time.new(2004, 11, 24, 01, 04, 44)
-      #   Time.current # => Wed, 24 Nov 2004 01:04:44 EST -05:00
-      #   Date.current # => Wed, 24 Nov 2004
+      #   Time.current     # => Wed, 24 Nov 2004 01:04:44 EST -05:00
+      #   Date.current     # => Wed, 24 Nov 2004
+      #   DateTime.current # => Wed, 24 Nov 2004 01:04:44 -0500
       #
       # Dates are taken as their timestamp at the beginning of the day in the
       # application time zone. <tt>Time.current</tt> returns said timestamp,
@@ -78,6 +80,10 @@ module ActiveSupport
       # or <tt>Date.today</tt>, in order to honor the application time zone
       # please always use <tt>Time.current</tt> and <tt>Date.current</tt>.)
       #
+      # Note that the usec for the time passed will be set to 0 to prevent rounding
+      # errors with external services, like MySQL (which will round instead of floor,
+      # leading to off-by-one-second errors).
+      #
       # This method also accepts a block, which will return the current time back to its original
       # state at the end of the block:
       #
@@ -86,19 +92,20 @@ module ActiveSupport
       #     Time.current # => Wed, 24 Nov 2004 01:04:44 EST -05:00
       #   end
       #   Time.current # => Sat, 09 Nov 2013 15:34:49 EST -05:00
-      def travel_to(date_or_time, &block)
+      def travel_to(date_or_time)
         if date_or_time.is_a?(Date) && !date_or_time.is_a?(DateTime)
           now = date_or_time.midnight.to_time
         else
-          now = date_or_time.to_time
+          now = date_or_time.to_time.change(usec: 0)
         end
 
         simple_stubs.stub_object(Time, :now, now)
         simple_stubs.stub_object(Date, :today, now.to_date)
+        simple_stubs.stub_object(DateTime, :now, now.to_datetime)
 
         if block_given?
           begin
-            block.call
+            yield
           ensure
             travel_back
           end

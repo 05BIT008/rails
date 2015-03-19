@@ -1,4 +1,3 @@
-# encoding: utf-8
 require "cases/helper"
 require 'models/man'
 require 'models/face'
@@ -52,16 +51,33 @@ class PresenceValidationTest < ActiveRecord::TestCase
   end
 
   def test_validates_presence_doesnt_convert_to_array
-    Speedometer.validates_presence_of :dashboard
+    speedometer = Class.new(Speedometer)
+    speedometer.validates_presence_of :dashboard
 
     dash = Dashboard.new
 
     # dashboard has to_a method
     def dash.to_a; ['(/)', '(\)']; end
 
-    s = Speedometer.new
+    s = speedometer.new
     s.dashboard = dash
 
     assert_nothing_raised { s.valid? }
+  end
+
+  def test_does_not_validate_presence_of_if_parent_record_is_validate_false
+    repair_validations(Interest) do
+      Interest.validates_presence_of(:topic)
+      interest = Interest.new
+      interest.save!(validate: false)
+      assert interest.persisted?
+
+      man = Man.new(interest_ids: [interest.id])
+      man.save!
+
+      assert_equal man.interests.size, 1
+      assert interest.valid?
+      assert man.valid?
+    end
   end
 end

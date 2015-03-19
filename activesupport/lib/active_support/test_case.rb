@@ -8,34 +8,55 @@ require 'active_support/testing/declarative'
 require 'active_support/testing/isolation'
 require 'active_support/testing/constant_lookup'
 require 'active_support/testing/time_helpers'
+require 'active_support/testing/file_fixtures'
 require 'active_support/core_ext/kernel/reporting'
-require 'active_support/deprecation'
-
-begin
-  silence_warnings { require 'mocha/setup' }
-rescue LoadError
-end
 
 module ActiveSupport
   class TestCase < ::Minitest::Test
     Assertion = Minitest::Assertion
 
-    alias_method :method_name, :name
+    class << self
+      # Sets the order in which test cases are run.
+      #
+      #   ActiveSupport::TestCase.test_order = :random # => :random
+      #
+      # Valid values are:
+      # * +:random+   (to run tests in random order)
+      # * +:parallel+ (to run tests in parallel)
+      # * +:sorted+   (to run tests alphabetically by method name)
+      # * +:alpha+    (equivalent to +:sorted+)
+      def test_order=(new_order)
+        ActiveSupport.test_order = new_order
+      end
 
-    $tags = {}
-    def self.for_tag(tag)
-      yield if $tags[tag]
+      # Returns the order in which test cases are run.
+      #
+      #   ActiveSupport::TestCase.test_order # => :random
+      #
+      # Possible values are +:random+, +:parallel+, +:alpha+, +:sorted+.
+      # Defaults to +:random+.
+      def test_order
+        test_order = ActiveSupport.test_order
+
+        if test_order.nil?
+          test_order = :random
+          self.test_order = test_order
+        end
+
+        test_order
+      end
+
+      alias :my_tests_are_order_dependent! :i_suck_and_my_tests_are_order_dependent!
     end
 
-    # FIXME: we have tests that depend on run order, we should fix that and
-    # remove this method call.
-    self.i_suck_and_my_tests_are_order_dependent!
+    alias_method :method_name, :name
 
     include ActiveSupport::Testing::TaggedLogging
     include ActiveSupport::Testing::SetupAndTeardown
     include ActiveSupport::Testing::Assertions
     include ActiveSupport::Testing::Deprecation
     include ActiveSupport::Testing::TimeHelpers
+    include ActiveSupport::Testing::FileFixtures
     extend ActiveSupport::Testing::Declarative
 
     # test/unit backwards compatibility methods

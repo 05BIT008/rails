@@ -1,10 +1,8 @@
-# encoding: utf-8
 require 'cases/helper'
 
 require 'models/topic'
 require 'models/reply'
 require 'models/custom_reader'
-require 'models/automobile'
 
 require 'active_support/json'
 require 'active_support/xml_mini'
@@ -19,11 +17,11 @@ class ValidationsTest < ActiveModel::TestCase
   def test_single_field_validation
     r = Reply.new
     r.title = "There's no content!"
-    assert r.invalid?, "A reply without content shouldn't be savable"
+    assert r.invalid?, "A reply without content should be invalid"
     assert r.after_validation_performed, "after_validation callback should be called"
 
     r.content = "Messa content!"
-    assert r.valid?, "A reply with content should be savable"
+    assert r.valid?, "A reply with content should be valid"
     assert r.after_validation_performed, "after_validation callback should be called"
   end
 
@@ -167,6 +165,50 @@ class ValidationsTest < ActiveModel::TestCase
     end
   end
 
+  def test_invalid_options_to_validate
+    error = assert_raises(ArgumentError) do
+      # A common mistake -- we meant to call 'validates'
+      Topic.validate :title, presence: true
+    end
+    message = 'Unknown key: :presence. Valid keys are: :on, :if, :unless, :prepend. Perhaps you meant to call `validates` instead of `validate`?'
+    assert_equal message, error.message
+  end
+
+  def test_callback_options_to_validate
+    klass = Class.new(Topic) do
+      attr_reader :call_sequence
+
+      def initialize(*)
+        super
+        @call_sequence = []
+      end
+
+      private
+        def validator_a
+          @call_sequence << :a
+        end
+
+        def validator_b
+          @call_sequence << :b
+        end
+
+        def validator_c
+          @call_sequence << :c
+        end
+    end
+
+    assert_nothing_raised do
+      klass.validate :validator_a, if: ->{ true }
+      klass.validate :validator_b, prepend: true
+      klass.validate :validator_c, unless: ->{ true }
+    end
+
+    t = klass.new
+
+    assert_predicate t, :valid?
+    assert_equal [:b, :a], t.call_sequence
+  end
+
   def test_errors_conversions
     Topic.validates_presence_of %w(title content)
     t = Topic.new
@@ -274,7 +316,7 @@ class ValidationsTest < ActiveModel::TestCase
       ActiveModel::Validations::FormatValidator,
       ActiveModel::Validations::LengthValidator,
       ActiveModel::Validations::PresenceValidator
-    ], validators.map { |v| v.class }.sort_by { |c| c.to_s }
+    ], validators.map(&:class).sort_by(&:to_s)
   end
 
   def test_list_of_validators_will_be_empty_when_empty
@@ -283,25 +325,49 @@ class ValidationsTest < ActiveModel::TestCase
   end
 
   def test_validations_on_the_instance_level
-    auto = Automobile.new
+    Topic.validates :title, :author_name, presence: true
+    Topic.validates :content, length: { minimum: 10 }
 
-    assert          auto.invalid?
-    assert_equal 3, auto.errors.size
+    topic = Topic.new
+    assert topic.invalid?
+    assert_equal 3, topic.errors.size
 
-    auto.make  = 'Toyota'
-    auto.model = 'Corolla'
-    auto.approved = '1'
-
-    assert auto.valid?
+    topic.title = 'Some Title'
+    topic.author_name = 'Some Author'
+    topic.content = 'Some Content Whose Length is more than 10.'
+    assert topic.valid?
   end
 
   def test_validate
-    auto = Automobile.new
+    Topic.validate do
+      validates_presence_of :title, :author_name
+      validates_length_of :content, minimum: 10
+    end
 
-    assert_empty auto.errors
+    topic = Topic.new
+    assert_empty topic.errors
 
-    auto.validate
-    assert_not_empty auto.errors
+    topic.validate
+    assert_not_empty topic.errors
+  end
+
+  def test_validate_with_bang
+    Topic.validates :title, presence: true
+
+    assert_raise(ActiveModel::ValidationError) do
+      Topic.new.validate!
+    end
+  end
+
+  def test_validate_with_bang_and_context
+    Topic.validates :title, presence: true, on: :context
+
+    assert_raise(ActiveModel::ValidationError) do
+      Topic.new.validate!(:context)
+    end
+
+    t = Topic.new(title: "Valid title")
+    assert t.validate!(:context)
   end
 
   def test_strict_validation_in_validates
@@ -378,25 +444,4 @@ class ValidationsTest < ActiveModel::TestCase
     assert topic.invalid?
     assert duped.valid?
   end
-
-   # validator test:
-  def test_setup_is_deprecated_but_still_receives_klass # TODO: remove me in 4.2.
-    validator_class = Class.new(ActiveModel::Validator) do
-      def setup(klass)
-        @old_klass = klass
-      end
-
-      def validate(*)
-        @old_klass == Topic or raise "#setup didn't work"
-      end
-    end
-
-    assert_deprecated do
-      Topic.validates_with validator_class
-    end
-
-    t = Topic.new
-    t.valid?
-  end
-
 end

@@ -1,9 +1,13 @@
-*   Updates the maintenance policy to match the latest versions of Rails
+*   New section in Active Record Association Basics: Single Table Inheritance
 
-    *Matias Korhonen*
+    *Andrey Nering*
 
-*   Switched the order of `Applying a default scope` and `Merging of scopes` subsections so default scopes are introduced first.
+*   New section in Active Record Querying: Understanding The Method Chaining
 
-    *Alex Riabov*
+    *Andrey Nering*
 
-Please check [4-1-stable](https://github.com/rails/rails/blob/4-1-stable/guides/CHANGELOG.md) for previous changes.
+*   New section in Configuring: Search Engines Indexing
+
+    *Andrey Nering*
+
+Please check [4-2-stable](https://github.com/rails/rails/blob/4-2-stable/guides/CHANGELOG.md) for previous changes.

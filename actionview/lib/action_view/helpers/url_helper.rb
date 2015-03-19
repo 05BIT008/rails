@@ -46,9 +46,9 @@ module ActionView
       end
       protected :_back_url
 
-      # Creates a link tag of the given +name+ using a URL created by the set of +options+.
+      # Creates an anchor element of the given +name+ using a URL created by the set of +options+.
       # See the valid options in the documentation for +url_for+. It's also possible to
-      # pass a String instead of an options hash, which generates a link tag that uses the
+      # pass a String instead of an options hash, which generates an anchor element that uses the
       # value of the String as the href for the link. Using a <tt>:back</tt> Symbol instead
       # of an options hash will generate a link to the referrer (a JavaScript back link
       # will be used in place of a referrer if none exists). If +nil+ is passed as the name
@@ -229,59 +229,51 @@ module ActionView
       # ==== Examples
       #   <%= button_to "New", action: "new" %>
       #   # => "<form method="post" action="/controller/new" class="button_to">
-      #   #      <div><input value="New" type="submit" /></div>
+      #   #      <input value="New" type="submit" />
       #   #    </form>"
       #
       #   <%= button_to "New", new_articles_path %>
       #   # => "<form method="post" action="/articles/new" class="button_to">
-      #   #      <div><input value="New" type="submit" /></div>
+      #   #      <input value="New" type="submit" />
       #   #    </form>"
       #
       #   <%= button_to [:make_happy, @user] do %>
       #     Make happy <strong><%= @user.name %></strong>
       #   <% end %>
       #   # => "<form method="post" action="/users/1/make_happy" class="button_to">
-      #   #      <div>
-      #   #        <button type="submit">
-      #   #          Make happy <strong><%= @user.name %></strong>
-      #   #        </button>
-      #   #      </div>
+      #   #      <button type="submit">
+      #   #        Make happy <strong><%= @user.name %></strong>
+      #   #      </button>
       #   #    </form>"
       #
       #   <%= button_to "New", { action: "new" }, form_class: "new-thing" %>
       #   # => "<form method="post" action="/controller/new" class="new-thing">
-      #   #      <div><input value="New" type="submit" /></div>
+      #   #      <input value="New" type="submit" />
       #   #    </form>"
       #
       #
       #   <%= button_to "Create", { action: "create" }, remote: true, form: { "data-type" => "json" } %>
       #   # => "<form method="post" action="/images/create" class="button_to" data-remote="true" data-type="json">
-      #   #      <div>
-      #   #        <input value="Create" type="submit" />
-      #   #        <input name="authenticity_token" type="hidden" value="10f2163b45388899ad4d5ae948988266befcb6c3d1b2451cf657a0c293d605a6"/>
-      #   #      </div>
+      #   #      <input value="Create" type="submit" />
+      #   #      <input name="authenticity_token" type="hidden" value="10f2163b45388899ad4d5ae948988266befcb6c3d1b2451cf657a0c293d605a6"/>
       #   #    </form>"
       #
       #
       #   <%= button_to "Delete Image", { action: "delete", id: @image.id },
       #                                   method: :delete, data: { confirm: "Are you sure?" } %>
       #   # => "<form method="post" action="/images/delete/1" class="button_to">
-      #   #      <div>
-      #   #        <input type="hidden" name="_method" value="delete" />
-      #   #        <input data-confirm='Are you sure?' value="Delete Image" type="submit" />
-      #   #        <input name="authenticity_token" type="hidden" value="10f2163b45388899ad4d5ae948988266befcb6c3d1b2451cf657a0c293d605a6"/>
-      #   #      </div>
+      #   #      <input type="hidden" name="_method" value="delete" />
+      #   #      <input data-confirm='Are you sure?' value="Delete Image" type="submit" />
+      #   #      <input name="authenticity_token" type="hidden" value="10f2163b45388899ad4d5ae948988266befcb6c3d1b2451cf657a0c293d605a6"/>
       #   #    </form>"
       #
       #
       #   <%= button_to('Destroy', 'http://www.example.com',
       #             method: "delete", remote: true, data: { confirm: 'Are you sure?', disable_with: 'loading...' }) %>
       #   # => "<form class='button_to' method='post' action='http://www.example.com' data-remote='true'>
-      #   #       <div>
-      #   #         <input name='_method' value='delete' type='hidden' />
-      #   #         <input value='Destroy' type='submit' data-disable-with='loading...' data-confirm='Are you sure?' />
-      #   #         <input name="authenticity_token" type="hidden" value="10f2163b45388899ad4d5ae948988266befcb6c3d1b2451cf657a0c293d605a6"/>
-      #   #       </div>
+      #   #       <input name='_method' value='delete' type='hidden' />
+      #   #       <input value='Destroy' type='submit' data-disable-with='loading...' data-confirm='Are you sure?' />
+      #   #       <input name="authenticity_token" type="hidden" value="10f2163b45388899ad4d5ae948988266befcb6c3d1b2451cf657a0c293d605a6"/>
       #   #     </form>"
       #   #
       def button_to(name = nil, options = nil, html_options = nil, &block)
@@ -436,6 +428,7 @@ module ActionView
       # * <tt>:body</tt> - Preset the body of the email.
       # * <tt>:cc</tt> - Carbon Copy additional recipients on the email.
       # * <tt>:bcc</tt> - Blind Carbon Copy additional recipients on the email.
+      # * <tt>:reply_to</tt> - Preset the Reply-To field of the email.
       #
       # ==== Obfuscation
       # Prior to Rails 4.0, +mail_to+ provided options for encoding the address
@@ -462,20 +455,18 @@ module ActionView
       #          <strong>Email me:</strong> <span>me@domain.com</span>
       #        </a>
       def mail_to(email_address, name = nil, html_options = {}, &block)
-        email_address = ERB::Util.html_escape(email_address)
-
         html_options, name = name, nil if block_given?
         html_options = (html_options || {}).stringify_keys
 
-        extras = %w{ cc bcc body subject }.map! { |item|
-          option = html_options.delete(item) || next
-          "#{item}=#{Rack::Utils.escape_path(option)}"
+        extras = %w{ cc bcc body subject reply_to }.map! { |item|
+          option = html_options.delete(item).presence || next
+          "#{item.dasherize}=#{Rack::Utils.escape_path(option)}"
         }.compact
-        extras = extras.empty? ? '' : '?' + ERB::Util.html_escape(extras.join('&'))
+        extras = extras.empty? ? '' : '?' + extras.join('&')
 
-        html_options["href"] = "mailto:#{email_address}#{extras}".html_safe
+        html_options["href"] = "mailto:#{email_address}#{extras}"
 
-        content_tag(:a, name || email_address.html_safe, html_options, &block)
+        content_tag(:a, name || email_address, html_options, &block)
       end
 
       # True if the current request URI was generated by the given +options+.

@@ -8,8 +8,6 @@ module I18n
     config.i18n.railties_load_path = []
     config.i18n.load_path = []
     config.i18n.fallbacks = ActiveSupport::OrderedOptions.new
-    # Enforce I18n to check the available locales when setting a locale.
-    config.i18n.enforce_available_locales = true
 
     # Set the i18n configuration after initialization since a lot of
     # configuration is still usually done in application initializers.
@@ -36,7 +34,7 @@ module I18n
       # Avoid issues with setting the default_locale by disabling available locales
       # check while configuring.
       enforce_available_locales = app.config.i18n.delete(:enforce_available_locales)
-      enforce_available_locales = I18n.enforce_available_locales unless I18n.enforce_available_locales.nil?
+      enforce_available_locales = I18n.enforce_available_locales if enforce_available_locales.nil?
       I18n.enforce_available_locales = false
 
       app.config.i18n.each do |setting, value|
@@ -57,14 +55,20 @@ module I18n
 
       reloader = ActiveSupport::FileUpdateChecker.new(I18n.load_path.dup){ I18n.reload! }
       app.reloaders << reloader
-      ActionDispatch::Reloader.to_prepare { reloader.execute_if_updated }
+      ActionDispatch::Reloader.to_prepare do
+        reloader.execute_if_updated
+        # TODO: remove the following line as soon as the return value of
+        # callbacks is ignored, that is, returning `false` does not
+        # display a deprecation warning or halts the callback chain.
+        true
+      end
       reloader.execute
 
       @i18n_inited = true
     end
 
     def self.include_fallbacks_module
-      I18n.backend.class.send(:include, I18n::Backend::Fallbacks)
+      I18n.backend.class.include(I18n::Backend::Fallbacks)
     end
 
     def self.init_fallbacks(fallbacks)

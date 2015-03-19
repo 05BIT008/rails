@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2014 David Heinemeier Hansson
+# Copyright (c) 2005-2015 David Heinemeier Hansson
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -70,6 +70,8 @@ module ActiveSupport
 
     NumberHelper.eager_load!
   end
+
+  cattr_accessor :test_order # :nodoc:
 end
 
 autoload :I18n, "active_support/i18n"

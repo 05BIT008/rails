@@ -32,8 +32,8 @@ module ActiveRecord
         #   }
         def initialize(url)
           raise "Database URL cannot be empty" if url.blank?
-          @uri     = URI.parse(url)
-          @adapter = @uri.scheme.gsub('-', '_')
+          @uri     = uri_parser.parse(url)
+          @adapter = @uri.scheme.tr('-', '_')
           @adapter = "postgresql" if @adapter == "postgres"
 
           if @uri.opaque
@@ -85,7 +85,7 @@ module ActiveRecord
               "password" => uri.password,
               "port"     => uri.port,
               "database" => database_from_path,
-              "host"     => uri.host })
+              "host"     => uri.hostname })
           end
         end
 
@@ -160,7 +160,7 @@ module ActiveRecord
         #   config = { "production" => { "host" => "localhost", "database" => "foo", "adapter" => "sqlite3" } }
         #   spec = Resolver.new(config).spec(:production)
         #   spec.adapter_method
-        #   # => "sqlite3"
+        #   # => "sqlite3_connection"
         #   spec.config
         #   # => { "host" => "localhost", "database" => "foo", "adapter" => "sqlite3" }
         #
@@ -209,27 +209,13 @@ module ActiveRecord
           when Symbol
             resolve_symbol_connection spec
           when String
-            resolve_string_connection spec
+            resolve_url_connection spec
           when Hash
             resolve_hash_connection spec
           end
         end
 
-        def resolve_string_connection(spec)
-          # Rails has historically accepted a string to mean either
-          # an environment key or a URL spec, so we have deprecated
-          # this ambiguous behaviour and in the future this function
-          # can be removed in favor of resolve_url_connection.
-          if configurations.key?(spec) || spec !~ /:/
-            ActiveSupport::Deprecation.warn "Passing a string to ActiveRecord::Base.establish_connection " \
-              "for a configuration lookup is deprecated, please pass a symbol (#{spec.to_sym.inspect}) instead"
-            resolve_symbol_connection(spec)
-          else
-            resolve_url_connection(spec)
-          end
-        end
-
-        # Takes the environment such as `:production` or `:development`.
+        # Takes the environment such as +:production+ or +:development+.
         # This requires that the @configurations was initialized with a key that
         # matches.
         #
@@ -250,7 +236,7 @@ module ActiveRecord
         # Connection details inside of the "url" key win any merge conflicts
         def resolve_hash_connection(spec)
           if spec["url"] && spec["url"] !~ /^jdbc:/
-            connection_hash = resolve_string_connection(spec.delete("url"))
+            connection_hash = resolve_url_connection(spec.delete("url"))
             spec.merge!(connection_hash)
           end
           spec

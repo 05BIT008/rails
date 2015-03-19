@@ -1,3 +1,5 @@
+**DO NOT READ THIS FILE ON GITHUB, GUIDES ARE PUBLISHED ON http://guides.rubyonrails.org.**
+
 Active Record Associations
 ==========================
 
@@ -101,13 +103,13 @@ class CreateOrders < ActiveRecord::Migration
   def change
     create_table :customers do |t|
       t.string :name
-      t.timestamps
+      t.timestamps null: false
     end
 
     create_table :orders do |t|
-      t.belongs_to :customer
+      t.belongs_to :customer, index: true
       t.datetime :order_date
-      t.timestamps
+      t.timestamps null: false
     end
   end
 end
@@ -132,13 +134,13 @@ class CreateSuppliers < ActiveRecord::Migration
   def change
     create_table :suppliers do |t|
       t.string :name
-      t.timestamps
+      t.timestamps null: false
     end
 
     create_table :accounts do |t|
-      t.belongs_to :supplier
+      t.belongs_to :supplier, index: true
       t.string :account_number
-      t.timestamps
+      t.timestamps null: false
     end
   end
 end
@@ -165,13 +167,13 @@ class CreateCustomers < ActiveRecord::Migration
   def change
     create_table :customers do |t|
       t.string :name
-      t.timestamps
+      t.timestamps null: false
     end
 
     create_table :orders do |t|
-      t.belongs_to :customer
+      t.belongs_to :customer, index: true
       t.datetime :order_date
-      t.timestamps
+      t.timestamps null: false
     end
   end
 end
@@ -207,19 +209,19 @@ class CreateAppointments < ActiveRecord::Migration
   def change
     create_table :physicians do |t|
       t.string :name
-      t.timestamps
+      t.timestamps null: false
     end
 
     create_table :patients do |t|
       t.string :name
-      t.timestamps
+      t.timestamps null: false
     end
 
     create_table :appointments do |t|
-      t.belongs_to :physician
-      t.belongs_to :patient
+      t.belongs_to :physician, index: true
+      t.belongs_to :patient, index: true
       t.datetime :appointment_date
-      t.timestamps
+      t.timestamps null: false
     end
   end
 end
@@ -291,19 +293,19 @@ class CreateAccountHistories < ActiveRecord::Migration
   def change
     create_table :suppliers do |t|
       t.string :name
-      t.timestamps
+      t.timestamps null: false
     end
 
     create_table :accounts do |t|
-      t.belongs_to :supplier
+      t.belongs_to :supplier, index: true
       t.string :account_number
-      t.timestamps
+      t.timestamps null: false
     end
 
     create_table :account_histories do |t|
-      t.belongs_to :account
+      t.belongs_to :account, index: true
       t.integer :credit_rating
-      t.timestamps
+      t.timestamps null: false
     end
   end
 end
@@ -332,17 +334,17 @@ class CreateAssembliesAndParts < ActiveRecord::Migration
   def change
     create_table :assemblies do |t|
       t.string :name
-      t.timestamps
+      t.timestamps null: false
     end
 
     create_table :parts do |t|
       t.string :part_number
-      t.timestamps
+      t.timestamps null: false
     end
 
     create_table :assemblies_parts, id: false do |t|
-      t.belongs_to :assembly
-      t.belongs_to :part
+      t.belongs_to :assembly, index: true
+      t.belongs_to :part, index: true
     end
   end
 end
@@ -371,14 +373,16 @@ class CreateSuppliers < ActiveRecord::Migration
   def change
     create_table :suppliers do |t|
       t.string  :name
-      t.timestamps
+      t.timestamps null: false
     end
 
     create_table :accounts do |t|
       t.integer :supplier_id
       t.string  :account_number
-      t.timestamps
+      t.timestamps null: false
     end
+
+    add_index :accounts, :supplier_id
   end
 end
 ```
@@ -453,8 +457,10 @@ class CreatePictures < ActiveRecord::Migration
       t.string  :name
       t.integer :imageable_id
       t.string  :imageable_type
-      t.timestamps
+      t.timestamps null: false
     end
+
+    add_index :pictures, [:imageable_type, :imageable_id]
   end
 end
 ```
@@ -466,8 +472,8 @@ class CreatePictures < ActiveRecord::Migration
   def change
     create_table :pictures do |t|
       t.string :name
-      t.references :imageable, polymorphic: true
-      t.timestamps
+      t.references :imageable, polymorphic: true, index: true
+      t.timestamps null: false
     end
   end
 end
@@ -496,8 +502,8 @@ In your migrations/schema, you will add a references column to the model itself.
 class CreateEmployees < ActiveRecord::Migration
   def change
     create_table :employees do |t|
-      t.references :manager
-      t.timestamps
+      t.references :manager, index: true
+      t.timestamps null: false
     end
   end
 end
@@ -561,6 +567,8 @@ class CreateOrders < ActiveRecord::Migration
       t.string   :order_number
       t.integer  :customer_id
     end
+
+    add_index :orders, :customer_id
   end
 end
 ```
@@ -594,6 +602,9 @@ class CreateAssembliesPartsJoinTable < ActiveRecord::Migration
       t.integer :assembly_id
       t.integer :part_id
     end
+
+    add_index :assemblies_parts, :assembly_id
+    add_index :assemblies_parts, :part_id
   end
 end
 ```
@@ -680,7 +691,7 @@ c.first_name = 'Manny'
 c.first_name == o.customer.first_name # => false
 ```
 
-This happens because c and o.customer are two different in-memory representations of the same data, and neither one is automatically refreshed from changes to the other. Active Record provides the `:inverse_of` option so that you can inform it of these relations:
+This happens because `c` and `o.customer` are two different in-memory representations of the same data, and neither one is automatically refreshed from changes to the other. Active Record provides the `:inverse_of` option so that you can inform it of these relations:
 
 ```ruby
 class Customer < ActiveRecord::Base
@@ -715,10 +726,10 @@ Most associations with standard names will be supported. However, associations
 that contain the following options will not have their inverses set
 automatically:
 
-* :conditions
-* :through
-* :polymorphic
-* :foreign_key
+* `:conditions`
+* `:through`
+* `:polymorphic`
+* `:foreign_key`
 
 Detailed Association Reference
 ------------------------------
@@ -747,7 +758,7 @@ class Order < ActiveRecord::Base
 end
 ```
 
-Each instance of the order model will have these methods:
+Each instance of the `Order` model will have these methods:
 
 ```ruby
 customer
@@ -822,6 +833,7 @@ The `belongs_to` association supports these options:
 * `:polymorphic`
 * `:touch`
 * `:validate`
+* `:optional`
 
 ##### `:autosave`
 
@@ -870,9 +882,11 @@ class Order < ActiveRecord::Base
   belongs_to :customer, counter_cache: :count_of_orders
 end
 class Customer < ActiveRecord::Base
-  has_many :orders
+  has_many :orders, counter_cache: :count_of_orders
 end
 ```
+
+NOTE: You only need to specify the :counter_cache option on the "has_many side" of the association when using a custom name for the counter cache.
 
 Counter cache columns are added to the containing model's list of read-only attributes through `attr_readonly`.
 
@@ -942,6 +956,11 @@ end
 ##### `:validate`
 
 If you set the `:validate` option to `true`, then associated objects will be validated whenever you save this object. By default, this is `false`: associated objects will not be validated when this object is saved.
+
+##### `:optional`
+
+If you set the `:optional` option to `true`, then the presence of the associated
+object won't be validated. By default, this option is set to `false`.
 
 #### Scopes for `belongs_to`
 
@@ -1131,7 +1150,7 @@ The `has_one` association supports these options:
 
 ##### `:as`
 
-Setting the `:as` option indicates that this is a polymorphic association. Polymorphic associations were discussed in detail <a href="#polymorphic-associations">earlier in this guide</a>.
+Setting the `:as` option indicates that this is a polymorphic association. Polymorphic associations were discussed in detail [earlier in this guide](#polymorphic-associations).
 
 ##### `:autosave`
 
@@ -1203,7 +1222,7 @@ The `:source_type` option specifies the source association type for a `has_one :
 
 ##### `:through`
 
-The `:through` option specifies a join model through which to perform the query. `has_one :through` associations were discussed in detail <a href="#the-has-one-through-association">earlier in this guide</a>.
+The `:through` option specifies a join model through which to perform the query. `has_one :through` associations were discussed in detail [earlier in this guide](#the-has-one-through-association).
 
 ##### `:validate`
 
@@ -1312,9 +1331,9 @@ When you declare a `has_many` association, the declaring class automatically gai
 * `collection<<(object, ...)`
 * `collection.delete(object, ...)`
 * `collection.destroy(object, ...)`
-* `collection=objects`
+* `collection=(objects)`
 * `collection_singular_ids`
-* `collection_singular_ids=ids`
+* `collection_singular_ids=(ids)`
 * `collection.clear`
 * `collection.empty?`
 * `collection.size`
@@ -1333,16 +1352,16 @@ class Customer < ActiveRecord::Base
 end
 ```
 
-Each instance of the customer model will have these methods:
+Each instance of the `Customer` model will have these methods:
 
 ```ruby
 orders(force_reload = false)
 orders<<(object, ...)
 orders.delete(object, ...)
 orders.destroy(object, ...)
-orders=objects
+orders=(objects)
 order_ids
-order_ids=ids
+order_ids=(ids)
 orders.clear
 orders.empty?
 orders.size
@@ -1390,7 +1409,7 @@ The `collection.destroy` method removes one or more objects from the collection 
 
 WARNING: Objects will _always_ be removed from the database, ignoring the `:dependent` option.
 
-##### `collection=objects`
+##### `collection=(objects)`
 
 The `collection=` method makes the collection contain only the supplied objects, by adding and deleting as appropriate.
 
@@ -1402,7 +1421,7 @@ The `collection_singular_ids` method returns an array of the ids of the objects 
 @order_ids = @customer.order_ids
 ```
 
-##### `collection_singular_ids=ids`
+##### `collection_singular_ids=(ids)`
 
 The `collection_singular_ids=` method makes the collection contain only the objects identified by the supplied primary key values, by adding and deleting as appropriate.
 
@@ -1486,6 +1505,7 @@ The `has_many` association supports these options:
 * `:as`
 * `:autosave`
 * `:class_name`
+* `:counter_cache`
 * `:dependent`
 * `:foreign_key`
 * `:inverse_of`
@@ -1497,7 +1517,7 @@ The `has_many` association supports these options:
 
 ##### `:as`
 
-Setting the `:as` option indicates that this is a polymorphic association, as discussed <a href="#polymorphic-associations">earlier in this guide</a>.
+Setting the `:as` option indicates that this is a polymorphic association, as discussed [earlier in this guide](#polymorphic-associations).
 
 ##### `:autosave`
 
@@ -1513,6 +1533,10 @@ class Customer < ActiveRecord::Base
 end
 ```
 
+##### `:counter_cache`
+
+This option can be used to configure a custom named `:counter_cache`. You only need this option when you customized the name of your `:counter_cache` on the [belongs_to association](#options-for-belongs-to).
+
 ##### `:dependent`
 
 Controls what happens to the associated objects when their owner is destroyed:
@@ -1522,8 +1546,6 @@ Controls what happens to the associated objects when their owner is destroyed:
 * `:nullify` causes the foreign keys to be set to `NULL`. Callbacks are not executed.
 * `:restrict_with_exception` causes an exception to be raised if there are any associated records
 * `:restrict_with_error` causes an error to be added to the owner if there are any associated objects
-
-NOTE: This option is ignored when you use the `:through` option on the association.
 
 ##### `:foreign_key`
 
@@ -1579,7 +1601,7 @@ The `:source_type` option specifies the source association type for a `has_many 
 
 ##### `:through`
 
-The `:through` option specifies a join model through which to perform the query. `has_many :through` associations provide a way to implement many-to-many relationships, as discussed <a href="#the-has-many-through-association">earlier in this guide</a>.
+The `:through` option specifies a join model through which to perform the query. `has_many :through` associations provide a way to implement many-to-many relationships, as discussed [earlier in this guide](#the-has-many-through-association).
 
 ##### `:validate`
 
@@ -1632,7 +1654,7 @@ If you use a hash-style `where` option, then record creation via this associatio
 
 ##### `extending`
 
-The `extending` method specifies a named module to extend the association proxy. Association extensions are discussed in detail <a href="#association-extensions">later in this guide</a>.
+The `extending` method specifies a named module to extend the association proxy. Association extensions are discussed in detail [later in this guide](#association-extensions).
 
 ##### `group`
 
@@ -1725,58 +1747,58 @@ mostly useful together with the `:through` option.
 ```ruby
 class Person < ActiveRecord::Base
   has_many :readings
-  has_many :posts, through: :readings
+  has_many :articles, through: :readings
 end
 
 person = Person.create(name: 'John')
-post   = Post.create(name: 'a1')
-person.posts << post
-person.posts << post
-person.posts.inspect # => [#<Post id: 5, name: "a1">, #<Post id: 5, name: "a1">]
-Reading.all.inspect  # => [#<Reading id: 12, person_id: 5, post_id: 5>, #<Reading id: 13, person_id: 5, post_id: 5>]
+article   = Article.create(name: 'a1')
+person.articles << article
+person.articles << article
+person.articles.inspect # => [#<Article id: 5, name: "a1">, #<Article id: 5, name: "a1">]
+Reading.all.inspect  # => [#<Reading id: 12, person_id: 5, article_id: 5>, #<Reading id: 13, person_id: 5, article_id: 5>]
 ```
 
-In the above case there are two readings and `person.posts` brings out both of
-them even though these records are pointing to the same post.
+In the above case there are two readings and `person.articles` brings out both of
+them even though these records are pointing to the same article.
 
 Now let's set `distinct`:
 
 ```ruby
 class Person
   has_many :readings
-  has_many :posts, -> { distinct }, through: :readings
+  has_many :articles, -> { distinct }, through: :readings
 end
 
 person = Person.create(name: 'Honda')
-post   = Post.create(name: 'a1')
-person.posts << post
-person.posts << post
-person.posts.inspect # => [#<Post id: 7, name: "a1">]
-Reading.all.inspect  # => [#<Reading id: 16, person_id: 7, post_id: 7>, #<Reading id: 17, person_id: 7, post_id: 7>]
+article   = Article.create(name: 'a1')
+person.articles << article
+person.articles << article
+person.articles.inspect # => [#<Article id: 7, name: "a1">]
+Reading.all.inspect  # => [#<Reading id: 16, person_id: 7, article_id: 7>, #<Reading id: 17, person_id: 7, article_id: 7>]
 ```
 
-In the above case there are still two readings. However `person.posts` shows
-only one post because the collection loads only unique records.
+In the above case there are still two readings. However `person.articles` shows
+only one article because the collection loads only unique records.
 
 If you want to make sure that, upon insertion, all of the records in the
 persisted association are distinct (so that you can be sure that when you
 inspect the association that you will never find duplicate records), you should
 add a unique index on the table itself. For example, if you have a table named
-`person_posts` and you want to make sure all the posts are unique, you could
+`person_articles` and you want to make sure all the articles are unique, you could
 add the following in a migration:
 
 ```ruby
-add_index :person_posts, :post, unique: true
+add_index :person_articles, :article, unique: true
 ```
 
 Note that checking for uniqueness using something like `include?` is subject
 to race conditions. Do not attempt to use `include?` to enforce distinctness
-in an association. For instance, using the post example from above, the
+in an association. For instance, using the article example from above, the
 following code would be racy because multiple users could be attempting this
 at the same time:
 
 ```ruby
-person.posts << post unless person.posts.include?(post)
+person.articles << article unless person.articles.include?(article)
 ```
 
 #### When are Objects Saved?
@@ -1801,9 +1823,9 @@ When you declare a `has_and_belongs_to_many` association, the declaring class au
 * `collection<<(object, ...)`
 * `collection.delete(object, ...)`
 * `collection.destroy(object, ...)`
-* `collection=objects`
+* `collection=(objects)`
 * `collection_singular_ids`
-* `collection_singular_ids=ids`
+* `collection_singular_ids=(ids)`
 * `collection.clear`
 * `collection.empty?`
 * `collection.size`
@@ -1822,16 +1844,16 @@ class Part < ActiveRecord::Base
 end
 ```
 
-Each instance of the part model will have these methods:
+Each instance of the `Part` model will have these methods:
 
 ```ruby
 assemblies(force_reload = false)
 assemblies<<(object, ...)
 assemblies.delete(object, ...)
 assemblies.destroy(object, ...)
-assemblies=objects
+assemblies=(objects)
 assembly_ids
-assembly_ids=ids
+assembly_ids=(ids)
 assemblies.clear
 assemblies.empty?
 assemblies.size
@@ -1886,7 +1908,7 @@ The `collection.destroy` method removes one or more objects from the collection 
 @part.assemblies.destroy(@assembly1)
 ```
 
-##### `collection=objects`
+##### `collection=(objects)`
 
 The `collection=` method makes the collection contain only the supplied objects, by adding and deleting as appropriate.
 
@@ -1898,7 +1920,7 @@ The `collection_singular_ids` method returns an array of the ids of the objects 
 @assembly_ids = @part.assembly_ids
 ```
 
-##### `collection_singular_ids=ids`
+##### `collection_singular_ids=(ids)`
 
 The `collection_singular_ids=` method makes the collection contain only the objects identified by the supplied primary key values, by adding and deleting as appropriate.
 
@@ -1970,8 +1992,8 @@ While Rails uses intelligent defaults that will work well in most situations, th
 
 ```ruby
 class Parts < ActiveRecord::Base
-  has_and_belongs_to_many :assemblies, autosave: true,
-                                       readonly: true
+  has_and_belongs_to_many :assemblies, -> { readonly },
+                                       autosave: true
 end
 ```
 
@@ -1983,7 +2005,6 @@ The `has_and_belongs_to_many` association supports these options:
 * `:foreign_key`
 * `:join_table`
 * `:validate`
-* `:readonly`
 
 ##### `:association_foreign_key`
 
@@ -2082,7 +2103,7 @@ If you use a hash-style `where`, then record creation via this association will 
 
 ##### `extending`
 
-The `extending` method specifies a named module to extend the association proxy. Association extensions are discussed in detail <a href="#association-extensions">later in this guide</a>.
+The `extending` method specifies a named module to extend the association proxy. Association extensions are discussed in detail [later in this guide](#association-extensions).
 
 ##### `group`
 
@@ -2227,3 +2248,67 @@ Extensions can refer to the internals of the association proxy using these three
 * `proxy_association.owner` returns the object that the association is a part of.
 * `proxy_association.reflection` returns the reflection object that describes the association.
 * `proxy_association.target` returns the associated object for `belongs_to` or `has_one`, or the collection of associated objects for `has_many` or `has_and_belongs_to_many`.
+
+Single Table Inheritance
+------------------------
+
+Sometimes, you may want to share fields and behavior between different models.
+Let's say we have Car, Motorcycle and Bicycle models. We will want to share
+the `color` and `price` fields and some methods for all of them, but having some
+specific behavior for each, and separated controllers too.
+
+Rails makes this quite easy. First, let's generate the base Vehicle model:
+
+```bash
+$ rails generate model vehicle type:string color:string price:decimal{10.2}
+```
+
+Did you note we are adding a "type" field? Since all models will be saved in a
+single database table, Rails will save in this column the name of the model that
+is being saved. In our example, this can be "Car", "Motorcycle" or "Bicycle."
+STI won't work without a "type" field in the table.
+
+Next, we will generate the three models that inherit from Vehicle. For this,
+we can use the `--parent=PARENT` option, which will generate a model that
+inherits from the specified parent and without equivalent migration (since the
+table already exists).
+
+For example, to generate the Car model:
+
+```bash
+$ rails generate model car --parent=Vehicle
+```
+
+The generated model will look like this:
+
+```ruby
+class Car < Vehicle
+end
+```
+
+This means that all behavior added to Vehicle is available for Car too, as
+associations, public methods, etc.
+
+Creating a car will save it in the `vehicles` table with "Car" as the `type` field:
+
+```ruby
+Car.create color: 'Red', price: 10000
+```
+
+will generate the following SQL:
+
+```sql
+INSERT INTO "vehicles" ("type", "color", "price") VALUES ("Car", "Red", 10000)
+```
+
+Querying car records will just search for vehicles that are cars:
+
+```ruby
+Car.all
+```
+
+will run a query like:
+
+```sql
+SELECT "vehicles".* FROM "vehicles" WHERE "vehicles"."type" IN ('Car')
+```
